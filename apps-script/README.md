@@ -50,9 +50,13 @@ curl -sL "$ARC_URL?action=ping"
 Expect `{"ok":true,"version":"1.0.0",...}`. The `-L` matters: Apps Script answers with a redirect.
 
 ```bash
-curl -sL -X POST "$ARC_URL" -H 'Content-Type: text/plain' --data '{"action":"day","day":{"date":"2026-10-19","sleep_hours":7.6,"weight_lb":225,"steps":8400,"session":"Lower A","trained":true,"updated_at":"2026-10-19T23:00:00.000Z","checklist":[{"key":"sleep","label":"7.5 hours minimum","group":"SLEEP","required":true,"done":true}],"lifts":[{"exercise":"Back squat","weight":225,"reps":8}],"reading":[{"book":"Meditations","pages":12}]}}'
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$ARC_URL" -H 'Content-Type: text/plain' --data '{"action":"day","day":{"date":"2026-10-19","sleep_hours":7.6,"weight_lb":225,"steps":8400,"session":"Lower A","trained":true,"updated_at":"2026-10-19T23:00:00.000Z","checklist":[{"key":"sleep","label":"7.5 hours minimum","group":"SLEEP","required":true,"done":true}],"lifts":[{"exercise":"Back squat","weight":225,"reps":8}],"reading":[{"book":"Meditations","pages":12}]}}'
 ```
-Expect `{"ok":true,"dates":["2026-10-19"]}` and a row in each of Daily, Checklist, Lifts, Reading.
+Expect `302`. Apps Script answers every POST with a redirect to a one-shot echo URL; the write has
+already happened by then. Don't add `-L` here: curl turns the redirected POST into a GET and Google
+serves a "Sorry, unable to open the file" page, which looks like a failure but isn't. Browsers
+follow the same redirect and receive the JSON body fine, which is what the app relies on.
+Check the write with the load call:
 
 ```bash
 curl -sL "$ARC_URL?action=load"
