@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Arc</title>
+<meta name="description" content="180-day daily protocol ledger. Google Sheets as the database.">
+<meta name="theme-color" content="#0C0F10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="The Arc">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= TODAY ================= -->
+  <main id="view-today" class="view is-active" aria-label="Today">
+    <header class="head">
+      <div class="head__left">
+        <div class="daynum num" id="daynum">000</div>
+        <div class="head__meta">
+          <div class="label" id="dayof">OF 180 · WEEK 0</div>
+          <div class="label label--dim" id="daydate">—</div>
+          <div class="daynav">
+            <button type="button" id="day-prev" aria-label="Previous day">‹</button>
+            <button type="button" id="day-next" aria-label="Next day">›</button>
+            <button type="button" id="day-today" class="today-btn" hidden>Today</button>
+          </div>
+        </div>
+      </div>
+      <div class="head__right">
+        <div class="label label--dim" id="session-label">Session</div>
+        <div class="session" id="session-name">—</div>
+        <div class="label label--dim num" id="session-time">—</div>
+      </div>
+    </header>
+
+    <div class="banner banner--phase" id="banner-phase"><span class="banner__tag">Achilles</span><span id="banner-phase-text"></span></div>
+    <div class="banner banner--deload" id="banner-deload"><span class="banner__tag">Deload</span><span>Week <b id="banner-deload-week"></b> · same loads, half the sets. Still counts as a training day.</span></div>
+    <div class="banner banner--diet" id="banner-diet"><span class="banner__tag">Diet break</span><span>Week <b id="banner-diet-week"></b> · 3,050 kcal maintenance. Protein stays at 210 g.</span></div>
+
+    <div class="sync is-unset" id="sync">
+      <span><span class="dot"></span><span id="sync-text">Not connected</span></span>
+      <button type="button" id="sync-now">Sync</button>
+    </div>
+
+    <section class="metrics" aria-label="Metrics">
+      <div class="metric"><div class="metric__v num" id="m-weight">—</div><div class="metric__k">lb</div></div>
+      <div class="metric"><div class="metric__v num" id="m-sleep">—</div><div class="metric__k">7d sleep</div></div>
+      <div class="metric"><div class="metric__v num" id="m-rate">—</div><div class="metric__k">lb / wk</div></div>
+      <div class="metric"><div class="metric__v num" id="m-streak">0</div><div class="metric__k">streak</div></div>
+      <div class="metric"><div class="metric__v num" id="m-clean">0</div><div class="metric__k">clean</div></div>
+    </section>
+
+    <section id="checklist" aria-label="Daily protocol"></section>
+
+    <div class="foot"><span>The Arc</span><span id="foot-range">19 Oct 2026 – 16 Apr 2027</span></div>
+  </main>
+
+  <!-- ================= LOG ================= -->
+  <main id="view-log" class="view" aria-label="Log">
+    <h2 class="label">Log · <span id="log-date">today</span></h2>
+    <div class="fields">
+      <label class="field"><span class="label">Weight lb</span><input type="number" inputmode="decimal" step="0.1" min="100" max="400" id="in-weight" placeholder="—"></label>
+      <label class="field"><span class="label">Sleep h</span><input type="number" inputmode="decimal" step="0.1" min="0" max="16" id="in-sleep" placeholder="—"></label>
+      <label class="field"><span class="label">Steps</span><input type="number" inputmode="numeric" step="100" min="0" max="100000" id="in-steps" placeholder="—"></label>
+    </div>
+
+    <h2 class="label" id="lift-label">Main lift</h2>
+    <div class="fields fields--2">
+      <label class="field"><span class="label">Top set lb</span><input type="number" inputmode="decimal" step="2.5" min="0" id="in-lift-w" placeholder="—"></label>
+      <label class="field"><span class="label">Reps</span><input type="number" inputmode="numeric" step="1" min="0" max="50" id="in-lift-r" placeholder="—"></label>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin-top:8px" id="lift-hint"></p>
+
+    <div class="toggle"><span class="toggle__k">Nicotine</span><button type="button" class="switch" id="in-nic" role="switch" aria-checked="false" aria-label="Nicotine used"></button></div>
+    <div class="toggle"><span class="toggle__k">Alcohol, drinks</span>
+      <span class="stepper"><button type="button" id="alc-minus" aria-label="Fewer drinks">−</button><span class="v num" id="alc-v">0</span><button type="button" id="alc-plus" aria-label="More drinks">+</button></span>
+    </div>
+
+    <h2 class="label">Notes</h2>
+    <textarea id="in-notes" placeholder="One line is enough."></textarea>
+    <div class="btnrow"><button type="button" class="btn btn--primary" id="log-save">Save</button><span class="status" id="log-status"></span></div>
+
+    <h2 class="label">Weight</h2>
+    <div class="chart" id="chart"></div>
+    <div class="legend"><span>Actual</span><span class="l-corr">0.5–1.0 % / wk corridor</span><span class="l-goal">192 lb goal</span></div>
+    <p class="projection" id="projection"></p>
+
+    <h2 class="label">Main lifts · est. 1RM</h2>
+    <table class="table" id="lifts-table"></table>
+
+    <h2 class="label">The arc</h2>
+    <div class="cal" id="cal"></div>
+    <div class="cal__key">
+      <span><i style="background:var(--moss);border-color:var(--moss)"></i>clean</span>
+      <span><i style="background:color-mix(in srgb,var(--moss) 28%,transparent)"></i>partial</span>
+      <span><i></i>missed</span>
+      <span><i style="box-shadow:inset 0 0 0 1px var(--brass)"></i>deload</span>
+      <span><i style="box-shadow:inset 0 0 0 1px var(--fog)"></i>diet break</span>
+      <span><i style="outline:1.5px solid var(--brass);outline-offset:1px"></i>today</span>
+    </div>
+
+    <details class="panel" id="settings">
+      <summary><span class="label">Sync</span><span class="label label--dim" id="settings-state"></span></summary>
+      <div class="panel__body">
+        <label class="field"><span class="label">Apps Script web app URL</span><input type="url" id="in-api" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"></label>
+        <div class="btnrow" style="margin-top:0"><button type="button" class="btn btn--sm" id="api-save">Save URL</button><button type="button" class="btn btn--sm" id="api-test">Test</button><span class="status" id="api-status"></span></div>
+        <p>Queue: <b id="q-count">0</b> pending · last pull <span id="last-pull">never</span>. Writes are stored on this device first and flushed when online.</p>
+        <p><button type="button" class="btn btn--sm" id="export-json">Export local JSON</button></p>
+      </div>
+    </details>
+  </main>
+
+  <!-- ================= FOOD ================= -->
+  <main id="view-food" class="view" aria-label="Food">
+    <div class="food-target">
+      <div class="label">Target</div>
+      <div class="big num" id="food-kcal">2,550 kcal</div>
+      <div class="macros num">210 P · 80 F · 255 C · no rice anywhere, sweet potato carries the carbs</div>
+    </div>
+
+    <h2 class="label">Meals</h2>
+    <div class="meal"><div class="meal__n">Breakfast, every day</div><div class="meal__k"><b>~680 kcal</b>55 P</div><div class="meal__d">100 g oats in water, 1 scoop whey stirred in after, 3 whole eggs, 1 tbsp ground flaxseed, frozen berries.</div></div>
+    <div class="meal"><div class="meal__n">Lunch A</div><div class="meal__k"><b>~660 kcal</b>58 P</div><div class="meal__d">200 g chicken, 1 medium sweet potato, frozen broccoli and peppers, olive oil, lemon, chili.</div></div>
+    <div class="meal"><div class="meal__n">Lunch B</div><div class="meal__k"><b>~680 kcal</b>55 P</div><div class="meal__d">200 g lean ground turkey taco-seasoned, large whole wheat tortilla, salad greens, tomato, red onion, salsa.</div></div>
+    <div class="meal"><div class="meal__n">Dinner A</div><div class="meal__k"><b>~690 kcal</b>47 P</div><div class="meal__d">180 g salmon, 1 sweet potato, big salad with olive oil and lemon. Fresh twice a week, tinned the other two.</div></div>
+    <div class="meal"><div class="meal__n">Dinner B</div><div class="meal__k"><b>~500 kcal</b>50 P</div><div class="meal__d">200 g chicken, large salad, sautéed frozen spinach.</div></div>
+    <div class="meal"><div class="meal__n">Snacks, two a day</div><div class="meal__k"><b>~250 kcal</b>~25 P each</div><div class="meal__d">Cottage cheese · two boiled eggs · apple with 2 tbsp peanut butter · banana post-training.</div></div>
+    <div class="meal"><div class="meal__n noth">Not in the house</div><div class="meal__d">Vector cereal, oat bites, rice krispy squares, fibre bars.</div></div>
+
+    <h2 class="label">Sunday prep · ~90 min</h2>
+    <p class="prose">Roast <b>2 whole chickens</b> at 375 °F for 90 min and strip them. Roast <b>6 sweet potatoes</b> alongside. Hard boil <b>a dozen eggs</b>. Brown <b>1 kg turkey</b> with taco seasoning.</p>
+
+    <h2 class="label">Weekly shop · ~$165–180 CAD</h2>
+    <ul class="shop">
+      <li>2 whole chickens</li><li>1 kg lean ground turkey</li><li>3 dozen eggs</li><li>2 tubs cottage cheese</li>
+      <li>2 fresh salmon portions</li><li>2 tins salmon</li><li>Whey</li><li>1.5 kg large oats</li>
+      <li>14 sweet potatoes</li><li>Whole wheat tortillas</li><li>2 bags salad greens</li><li>4 tomatoes</li>
+      <li>2 red onions</li><li>3 lemons</li><li>7 bananas</li><li>7 apples</li><li>Garlic</li>
+      <li>Frozen broccoli ×2</li><li>Frozen mixed veg</li><li>Frozen spinach</li><li>Frozen berries</li>
+      <li>Ground flaxseed</li><li>Peanut butter</li><li>Salsa</li><li>Taco seasoning</li><li>Olive oil</li>
+      <li>Chili flakes</li><li>Vinegar</li>
+    </ul>
+  </main>
+
+  <!-- ================= READING ================= -->
+  <main id="view-read" class="view" aria-label="Reading">
+    <h2 class="label">Reading · <span id="read-total">0</span> of <span id="read-total-all">1,472</span> pages</h2>
+    <div id="books"></div>
+    <p class="prose">Five books over 180 days. Log pages per day; the projection uses your average pages per day since the first log for that book.</p>
+  </main>
+
+</div>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="tabs__inner">
+    <button type="button" class="tab is-active" data-view="today">Today</button>
+    <button type="button" class="tab" data-view="log">Log</button>
+    <button type="button" class="tab" data-view="food">Food</button>
+    <button type="button" class="tab" data-view="read">Read</button>
+  </div>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
