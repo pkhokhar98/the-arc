@@ -350,7 +350,8 @@ function renderToday() {
   $('#m-weight').innerHTML = last !== null ? esc(last.toFixed(1)) : '—';
   const sa = sleepAvg7(date); const ms = $('#m-sleep'); ms.textContent = sa !== null ? sa.toFixed(1) : '—'; ms.className = 'metric__v num ' + sleepCls(sa);
   const ri = rateInfo(); const mr = $('#m-rate');
-  mr.innerHTML = ri ? `${esc(ri.rate.toFixed(1))}<small>${esc(ri.pct.toFixed(1))}%</small>` : '—'; mr.className = 'metric__v num ' + (ri ? ri.cls : '');
+  mr.textContent = ri ? ri.rate.toFixed(1) : '—'; mr.className = 'metric__v num ' + (ri ? ri.cls : '');
+  mr.nextElementSibling.textContent = ri ? `${ri.pct.toFixed(1)}%/wk` : 'lb / wk';
   $('#m-streak').textContent = streak(today);
   $('#m-clean').textContent = cleanDays();
 
