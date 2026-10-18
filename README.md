@@ -34,13 +34,13 @@ then **Test**. The pasted URL is kept in the browser and overrides the constant.
 
 ### 3. Deploy the frontend (GitHub Pages)
 
-The repo is deployed from the `main` branch root. Any push redeploys in about a minute.
+Repo: <https://github.com/pkhokhar98/the-arc> (public; GitHub Pages on a free plan needs a public repo). Deployed from the `main` branch root. Any push redeploys in about a minute.
 
 ```bash
 git push origin main
 ```
 
-Pages URL: `https://<user>.github.io/the-arc/`. Open it in Safari on the phone → Share → **Add to Home Screen**.
+Pages URL: <https://pkhokhar98.github.io/the-arc/>. Open it in Safari on the phone → Share → **Add to Home Screen**.
 The first open caches the shell, so later opens work with no signal.
 
 Alternative hosts need no changes: drag the folder onto Netlify Drop, or `vercel deploy`. The app is
