@@ -55,7 +55,9 @@ A Dragon Ball Z–themed dashboard over the same local data. It opens straight t
 |---|---|
 | Power level | Cumulative score, see the formula below. Counts up on open, with the scouter lens scanning. |
 | Form | Base form 0 · Kaioken 9,000 · Super Saiyan 25,000 · SS2 50,000 · SS3 80,000 · SS God 115,000 · SS Blue 150,000 · Ultra Instinct 190,000. The aura colour follows the form; SS2, SS3 and Ultra Instinct add lightning. A perfect arc lands around 200,000. |
-| Ki charge | Today's required anchors, 0–10. Full charge reads "Kamehameha ready". |
+| Last time on The Arc… | A DBZ-narrator recap of your last logged day and a cliffhanger for today. |
+| Fighter | Vegeta, Gohan or Trunks (original silhouettes drawn in code). Your pick stands in the hero with the other two flanking, and changes the accent colour, signature attacks and some forms: Vegeta tops out at Ultra Ego, Gohan unlocks Ultimate and Beast, Trunks gets Super Saiyan Rage. Remembered per device. |
+| Ki charge | Today's required anchors, 0–10, named after your fighter's charge attack. At full charge a button fires their finisher (Final Flash, Father-Son Kamehameha, Shining Sword Attack) across the screen. |
 | Dragon Radar | One Dragon Ball per arc week with six or more clean days (the short final week needs all five). Seven summons the dragon. |
 | Scouter stats | Six 0–100 attributes over the last 28 days: STR, SPD, KI, SENZU (recovery), DISC, WIS. |
 | Battle log | Clean days per week, last eight weeks, against the six-day line. |
@@ -65,7 +67,7 @@ A Dragon Ball Z–themed dashboard over the same local data. It opens straight t
 
 **Formula.** Base 1,000. Each required anchor ticked +20. A clean day +300, multiplied by
 1 + min(streak, 30)/30, so a 30-day streak doubles it. A training session +250. Best est. 1RM of
-each main lift ×5. Every page read +2. Every lb lost +500. Nicotine −500 a day, each drink −100.
+each main lift ×5. Every page read +2. Every lb lost +500. Each drink −100.
 
 **Sample data** in the top-right swaps in a made-up 72-day run so you can see every panel filled in.
 It is generated in memory, never saved and never synced; a striped banner shows while it is on.

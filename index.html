@@ -69,14 +69,17 @@
   <!-- ================= POWER ================= -->
   <main id="view-power" class="view pw" aria-label="Power">
     <div class="pw-top">
-      <div class="pw-brand"><span class="pw-brand__k pw-jp" aria-hidden="true">修</span><span>Training arc · scouter</span></div>
+      <div class="pw-brand"><span class="pw-brand__k pw-jp" id="pw-kanji" aria-hidden="true">王</span><span>Training arc · scouter</span></div>
       <button type="button" class="pw-sample" id="pw-sample" aria-pressed="false">Sample data</button>
     </div>
     <div class="pw-ribbon" id="pw-ribbon" hidden>Sample · a made-up 72-day run, not your numbers</div>
 
     <div class="pw-grid">
+      <section class="pw-recap" id="pw-recap" aria-label="Recap"></section>
       <section class="pw-hero" id="pw-hero" aria-label="Power level">
         <canvas class="pw-aura" id="pw-aura" aria-hidden="true"></canvas>
+        <div class="pw-cast" id="pw-cast" aria-hidden="true"></div>
+        <svg class="pw-terrain" viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true"><path d="M0,120 L0,74 L40,70 L58,46 L120,42 L136,66 L210,72 L240,56 L262,30 L330,26 L350,58 L440,68 L486,62 L512,40 L590,36 L610,62 L700,70 L742,48 L770,22 L834,20 L852,52 L930,62 L960,50 L1000,54 L1000,120 Z"/></svg>
         <div class="pw-hud" id="pw-hud">Scouter online</div>
         <div class="pw-lens" aria-hidden="true"><span class="pw-lens__top"><span class="pw-lens__x"></span>PWR</span><span class="pw-lens__read" id="pw-lens-read">00000</span></div>
         <div class="pw-hero__in">
@@ -85,16 +88,24 @@
           <div class="pw-tier" id="pw-tier">Base form</div>
           <div class="pw-tierjp pw-jp" id="pw-tierjp">通常</div>
           <div class="pw-stamp" id="pw-stamp" hidden>It's over 9000!</div>
-          <div class="pw-next"><div class="pw-next__bar"><i id="pw-next-fill"></i></div><div class="pw-next__t" id="pw-next"></div></div>
-          <div class="pw-charge" id="pw-charge">
-            <div class="pw-charge__h"><span>Ki charge · today</span><span id="pw-charge-t">0/10</span></div>
-            <div class="pw-charge__segs" id="pw-segs"></div>
-            <div class="pw-charge__ready" id="pw-ready"></div>
-          </div>
+        </div>
+      </section>
+
+      <section class="pw-panel pw-ki" aria-label="Ki charge">
+        <div class="pw-next"><div class="pw-next__t" id="pw-next"></div><div class="pw-next__bar"><i id="pw-next-fill"></i></div></div>
+        <div class="pw-charge" id="pw-charge">
+          <div class="pw-charge__h"><span id="pw-charge-k">Ki charge · today</span><span id="pw-charge-t">0/10</span></div>
+          <div class="pw-charge__segs" id="pw-segs"></div>
+          <div class="pw-charge__ready" id="pw-ready"></div>
         </div>
       </section>
 
       <section class="pw-panel pw-stats" id="pw-stats" aria-label="Totals"></section>
+
+      <section class="pw-panel pw-roster-p">
+        <h2 class="pw-h"><b>Choose your fighter</b><span class="pw-jp">戦士</span></h2>
+        <div class="pw-roster" id="pw-roster"></div>
+      </section>
 
       <section class="pw-panel">
         <h2 class="pw-h"><b>Dragon Radar</b><span class="pw-jp">ドラゴンボール</span></h2>
@@ -134,7 +145,7 @@
       <section class="pw-panel">
         <h2 class="pw-h"><b>Power Sources</b><span class="pw-jp">気の源</span></h2>
         <div class="pw-src" id="pw-src"></div>
-        <p class="pw-note">Base 1,000. Each required anchor +20. A clean day +300, scaled up to ×2 by your streak. A training session +250. Main-lift best est. 1RM ×5. Every page +2. Every lb lost +500. Nicotine −500 a day, each drink −100.</p>
+        <p class="pw-note">Base 1,000. Each required anchor +20. A clean day +300, scaled up to ×2 by your streak. A training session +250. Main-lift best est. 1RM ×5. Every page +2. Every lb lost +500. Each drink −100.</p>
       </section>
     </div>
   </main>

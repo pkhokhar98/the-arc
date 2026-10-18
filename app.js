@@ -704,7 +704,7 @@ const TIERS = [
 const ANCHOR_LABEL = { sleep: 'Sleep 7.5 h', morning_window: 'Morning window', protein: 'Protein target', steps: 'Steps target', train: 'Training session',
   decompress: 'Decompression', read: 'Read 20 min', night_close: 'Night close', rinse: 'Rinse + Pulmicort', sats: 'SATS' };
 const REDUCE = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
-const PW = { sample: false, sampleS: null, shown: 0, cur: 0, countRaf: 0, countT: 0 };
+const PW = { sample: false, sampleS: null, shown: 0, cur: 0, countRaf: 0, countT: 0, fighter: 'vegeta' };
 const fmtN = n => Math.round(n).toLocaleString('en-US');
 const abbr = n => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n));
 
@@ -727,7 +727,6 @@ function powerReport(today) {
     else if (d < today) streak = 0;
     if (day.checks.train && sessionFor(d).type !== 'rest') src.training += 250;
     src.wisdom += sumPages(day) * 2;
-    if (day.nicotine) src.penalties -= 500;
     src.penalties -= 100 * (day.alcohol_drinks || 0);
   });
   MAIN_LIFTS.forEach(l => {
@@ -775,13 +774,12 @@ function scouterStats(today) {
   const str = gains.length ? 0.75 * (adherence ?? 0) + 0.25 * Math.min(1, Math.max(0, avg(...gains)) / 0.15) : (adherence ?? 0);
   const pagesPerDay = dates.reduce((s, d) => s + (S.days[d] ? sumPages(S.days[d]) : 0), 0) / dates.length;
   const arcPace = BOOKS.reduce((s, b) => s + b.p, 0) / k.total;
-  const nicFree = dates.filter(d => !(S.days[d] && S.days[d].nicotine)).length / dates.length;
   return [
     { k: 'STR', name: 'Strength: lift-day adherence and est. 1RM gain', v: str },
     { k: 'SPD', name: 'Speed: run days and steps', v: avg(rate('train', runDay), rate('steps')) },
     { k: 'KI', name: 'Ki: morning window, decompression, SATS', v: avg(rate('morning_window'), rate('decompress'), rate('sats')) },
     { k: 'SENZU', name: 'Recovery: sleep, protein, rinse', v: avg(rate('sleep'), rate('protein'), rate('rinse')) },
-    { k: 'DISC', name: 'Discipline: clean days, night close, nicotine-free', v: avg(dates.filter(isClean).length / dates.length, rate('night_close'), nicFree) },
+    { k: 'DISC', name: 'Discipline: clean days and night close', v: avg(dates.filter(isClean).length / dates.length, rate('night_close')) },
     { k: 'WIS', name: 'Wisdom: reading and page pace', v: avg(rate('read'), Math.min(1, pagesPerDay / arcPace)) }
   ].map(x => Object.assign(x, { v: Math.round(Math.max(0, Math.min(1, x.v)) * 100) })).concat([{ days: dates.length }]);
 }
@@ -839,10 +837,120 @@ function barsSVG(weeks) {
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Clean days per week">${g}</svg>`;
 }
 
+
+// ---------- fighters (original silhouettes drawn for this app; viewBox 0 0 240 300)
+
+const SIL = {
+vegeta: `
+<g class="sil">
+ <path d="M98,108 L92,92 L82,88 L89,78 L79,64 L91,61 L84,42 L98,48 L95,24 L108,36 L110,8 L120,30 L127,-2 L133,28 L145,10 L144,40 L157,34 L151,56 L161,60 L152,75 L159,86 L146,91 L142,108
+  C142,129 133,144 120,148 C107,144 98,129 98,108 Z"/>
+ <path d="M109,136 L131,136 L133,166 L107,166 Z"/>
+ <path d="M60,300 L62,186 C66,170 90,160 110,159 L130,159 C150,160 174,170 178,186 L180,300 Z"/>
+ <path d="M28,170 C30,154 46,148 64,150 L88,156 C92,170 90,186 84,196 L44,200 C32,196 27,184 28,170 Z"/>
+ <path d="M212,170 C210,154 194,148 176,150 L152,156 C148,170 150,186 156,196 L196,200 C208,196 213,184 212,170 Z"/>
+ <path d="M40,226 C40,212 54,206 74,207 L166,207 C186,206 200,212 200,226 L200,238 C200,252 186,258 166,257 L74,257 C54,258 40,252 40,238 Z"/>
+</g>
+<g class="ln">
+ <path d="M104,160 L120,182 L136,160"/>
+ <path d="M100,104 L111,100 L120,92 L129,100 L140,104"/>
+ <path d="M58,232 L182,232"/>
+ <path d="M112,118 L118,121 M128,121 L134,118"/>
+ <path d="M70,196 C88,204 152,204 170,196"/>
+</g>`,
+gohan: `
+<g class="sil">
+ <path d="M97,110 L68,102 L86,92 L56,78 L86,74 L68,50 L98,60 L96,30 L114,50 L124,20 L133,48 L152,26 L151,56 L176,48 L162,72 L188,74 L160,88 L180,100 L146,102 L143,110
+  C143,130 134,145 120,149 C106,145 97,130 97,110 Z"/>
+ <path d="M109,138 L131,138 L134,166 L106,166 Z"/>
+ <path d="M34,300 L42,198 C46,176 76,164 106,161 L134,161 C164,164 194,176 198,198 L206,300 Z"/>
+</g>
+<g class="ln">
+ <path d="M121,86 C117,96 113,108 112,124"/>
+ <path d="M100,162 L120,204 L140,162"/>
+ <path d="M112,119 L118,122 M126,122 L132,119"/>
+ <path d="M48,250 L60,214 M192,250 L180,214"/>
+ <path d="M76,300 L80,250 M164,300 L160,250"/>
+</g>`,
+trunks: `
+<g class="sil">
+ <g transform="rotate(-24 70 160)">
+  <rect x="62" y="56" width="15" height="88" rx="3"/>
+  <rect x="44" y="140" width="51" height="12" rx="3"/>
+  <circle cx="69.5" cy="52" r="9"/>
+  <rect x="64" y="150" width="11" height="60"/>
+ </g>
+ <path d="M97,108 L86,92 L92,84 L80,70 L95,69 L89,48 L106,57 L110,32 L122,50 L131,26 L136,51 L151,40 L149,63 L163,66 L152,82 L159,92 L143,108
+  C143,129 134,144 120,148 C106,144 97,129 97,108 Z"/>
+ <path d="M109,137 L131,137 L133,166 L107,166 Z"/>
+ <path d="M46,300 L54,192 C60,174 84,164 106,161 L134,161 C156,164 180,174 186,192 L194,300 Z"/>
+ <path d="M98,150 L108,176 L120,163 L132,176 L142,150 L136,146 L120,160 L104,146 Z"/>
+</g>
+<g class="ln">
+ <path d="M70,182 L176,296" class="ln--strap"/>
+ <path d="M110,180 L116,300 M130,180 L124,300"/>
+ <path d="M112,118 L118,121 M127,121 L133,118"/>
+ <path d="M120,40 L119,58"/>
+</g>`
+};
+const FIGHTERS = {
+  vegeta: { name: 'Vegeta', title: 'Prince of all Saiyans', kanji: '王', c: '#4D7BFF', c2: '#E8EEFF',
+    charge: 'Galick Gun', move: 'Final Flash', beam: '#FFE45C',
+    tiers: { 7: { name: 'Ultra Ego', jp: '我儘の極意', aura: '#A23CFF', aura2: '#F2C8FF', bolts: true } } },
+  gohan: { name: 'Gohan', title: 'The scholar warrior', kanji: '飯', c: '#9B5CFF', c2: '#FFB347',
+    charge: 'Masenko', move: 'Father-Son Kamehameha', beam: '#5FD0FF',
+    tiers: { 5: { name: 'Ultimate', jp: 'アルティメット', aura: '#E6EBFF', aura2: '#FFFFFF' }, 7: { name: 'Beast', jp: 'ビースト', aura: '#B7A6FF', aura2: '#FFFFFF', bolts: true } } },
+  trunks: { name: 'Trunks', title: 'Warrior from the future', kanji: '剣', c: '#B9A2FF', c2: '#7FD3FF',
+    charge: 'Burning Attack', move: 'Shining Sword Attack', beam: '#FFC94A',
+    tiers: { 4: { name: 'Super Saiyan Rage', jp: '超サイヤ人怒り', aura: '#FFD23F', aura2: '#BFF0FF', bolts: true } } }
+};
+const fighter = () => FIGHTERS[PW.fighter] || FIGHTERS.vegeta;
+const formFor = i => i < 0 || i >= TIERS.length ? null : Object.assign({}, TIERS[i], (fighter().tiers || {})[i] || {});
+const silSVG = (key, cls) => `<svg class="${cls}" viewBox="0 -6 240 306" aria-hidden="true" focusable="false">${SIL[key]}</svg>`;
+
+function applyFighter() {
+  const f = fighter(), root = $('#view-power');
+  root.style.setProperty('--pw-acc', f.c); root.style.setProperty('--pw-acc2', f.c2); root.style.setProperty('--beam', f.beam);
+  $('#pw-kanji').textContent = f.kanji;
+  const others = Object.keys(FIGHTERS).filter(k => k !== PW.fighter);
+  $('#pw-cast').innerHTML = silSVG(others[0], 'pw-f pw-f--l') + silSVG(others[1], 'pw-f pw-f--r') + silSVG(PW.fighter, 'pw-f pw-f--main');
+  $('#pw-roster').innerHTML = Object.keys(FIGHTERS).map(k => { const x = FIGHTERS[k];
+    return `<button type="button" class="pw-card" data-f="${k}" aria-pressed="${k === PW.fighter}" style="--c:${x.c}">` +
+      silSVG(k, 'pw-card__art') + `<span class="pw-card__n">${x.name}</span><span class="pw-card__t">${esc(x.title)}</span>` +
+      `<span class="pw-card__m">${esc(x.move)}</span></button>`; }).join('');
+}
+
+/** "Last time on The Arc..." built from the most recent logged day before today. */
+function recapLine(today) {
+  const k = cfg(), dn = dayNumber(today);
+  if (dn < 1) return { e: 'Next time on The Arc…', b: `The training begins ${fmtShort(k.start)}. ${k.total} days. ${k.startW} lb to ${k.goal}. <b>Power up.</b>` };
+  let prev = null;
+  for (let d = addDays(today, -1); d >= k.start; d = addDays(d, -1)) if (S.days[d]) { prev = d; break; }
+  if (!prev) return { e: 'Day 1 of The Arc…', b: `The scouter is watching. <b>Ten anchors stand between you and full power.</b>` };
+  const day = S.days[prev], req = itemsFor(prev).filter(i => i.req), done = req.filter(i => day.checks[i.key]);
+  const bits = [`${done.length} of ${req.length} anchors`];
+  if (day.sleep_hours !== null) bits.push(`${day.sleep_hours} h of sleep`);
+  Object.keys(day.lifts || {}).forEach(l => { const x = day.lifts[l]; if (x.weight > 0) bits.push(`${l.toLowerCase()} ${x.weight} × ${x.reps}`); });
+  Object.keys(day.pages || {}).forEach(b => { if (day.pages[b] > 0) bits.push(`${day.pages[b]} pages of ${b}`); });
+  if (day.weight_lb !== null) bits.push(`${day.weight_lb} lb on the scale`);
+  const streakNow = powerReport(today).streak, miss = req.find(i => !day.checks[i.key]);
+  const hook = isClean(prev)
+    ? (streakNow > 1 ? `The streak stands at ${streakNow}. Can it survive day ${dn}?` : `A clean day. Can you stack another on day ${dn}?`)
+    : `${ANCHOR_LABEL[miss.key] || miss.title} slipped. Will day ${dn} be different?`;
+  return { e: 'Last time on The Arc…', b: `Day ${dayNumber(prev)}: ${esc(bits.join(', '))}. <b>${esc(hook)}</b>` };
+}
+
+function fireBeam() {
+  const f = fighter(), fx = h('div', { class: 'pw-beam', style: `--beam:${f.beam}`, 'aria-hidden': 'true' }, h('i'), h('b', {}, f.move + '!'));
+  document.body.append(fx);
+  const hero = $('#pw-hero'); hero.classList.remove('is-shake'); void hero.offsetWidth; hero.classList.add('is-shake');
+  setTimeout(() => fx.remove(), 1500);
+}
+
 // ---------- ki aura (canvas)
 
 const Aura = {
-  on: false, ready: false, raf: 0, parts: [], bolts: [], w: 0, h: 0, c1: '#8FB8FF', c2: '#EAF2FF', boltsOn: false, power: 1,
+  on: false, ready: false, raf: 0, parts: [], bolts: [], rocks: [], w: 0, h: 0, c1: '#8FB8FF', c2: '#EAF2FF', boltsOn: false, power: 1,
   init() {
     this.cv = $('#pw-aura');
     if (!this.cv || !this.cv.getContext) return;
@@ -870,7 +978,7 @@ const Aura = {
   },
   spawn() {
     const off = (Math.random() + Math.random()) - 1, spread = Math.min(this.w * 0.5, 340);
-    this.parts.push({ x: this.w / 2 + off * spread, y: this.h + 6 + Math.random() * 12, vx: -off * 0.2 + (Math.random() - 0.5) * 0.3,
+    this.parts.push({ x: this.w / 2 + off * spread * 0.8, y: this.h - 30 - Math.random() * this.h * 0.18, vx: -off * 0.2 + (Math.random() - 0.5) * 0.3,
       vy: -(1.3 + Math.random() * 2.3) * this.power, r: (14 + Math.random() * 26) * (1 - Math.abs(off) * 0.35), life: 0,
       max: (60 + Math.random() * 60) * (1.2 - Math.abs(off) * 0.55) * Math.min(1.6, this.h / 380) });
   },
@@ -885,6 +993,12 @@ const Aura = {
     this.parts.forEach(p => { p.x += p.vx + Math.sin((p.life + p.x) * 0.06) * 0.4; p.y += p.vy; p.life++; });
     this.parts = this.parts.filter(p => p.life < p.max && p.y > -60);
     if (this.boltsOn && Math.random() < 0.06) this.bolt();
+    if (Math.random() < 0.022 * this.power * Math.min(1.4, this.w / 600)) {
+      const r = 3 + Math.random() * 9, pts = [];
+      for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2, rr = r * (0.6 + Math.random() * 0.5); pts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
+      this.rocks.push({ x: Math.random() * this.w, y: this.h - 30 - Math.random() * 30, vy: -(0.25 + Math.random() * 0.6) * this.power, a: Math.random() * 6, va: (Math.random() - 0.5) * 0.04, pts });
+    }
+    this.rocks.forEach(o => { o.y += o.vy; o.a += o.va; }); this.rocks = this.rocks.filter(o => o.y > this.h * 0.3);
     this.bolts.forEach(b => b.life--); this.bolts = this.bolts.filter(b => b.life > 0);
   },
   draw() {
@@ -899,8 +1013,14 @@ const Aura = {
       c.beginPath(); b.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.stroke(); c.shadowBlur = 0;
     });
     c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+    c.fillStyle = '#0B1026'; c.strokeStyle = this.c1; c.lineWidth = 1;
+    this.rocks.forEach(o => {
+      c.save(); c.translate(o.x, o.y); c.rotate(o.a); c.globalAlpha = Math.max(0, Math.min(1, (this.h - o.y) / 80, (o.y - this.h * 0.3) / (this.h * 0.25)));
+      c.beginPath(); o.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); c.fill(); c.stroke(); c.restore();
+    });
+    c.globalAlpha = 1;
   },
-  still() { if (!this.ready || !this.w) return; this.parts = []; this.bolts = []; for (let i = 0; i < 140; i++) this.step(); this.bolts = []; this.draw(); },
+  still() { if (!this.ready || !this.w) return; this.parts = []; this.bolts = []; this.rocks = []; for (let i = 0; i < 140; i++) this.step(); this.bolts = []; this.draw(); },
   start() {
     if (!this.ready) this.init(); if (!this.ready) return;
     this.size();
@@ -947,9 +1067,12 @@ function renderPower() {
 }
 
 function drawPower(today) {
-  const k = cfg(), rep = powerReport(today), ti = tierIndex(rep.total), tier = TIERS[ti], next = TIERS[ti + 1];
+  const k = cfg(), rep = powerReport(today), ti = tierIndex(rep.total), tier = formFor(ti), next = formFor(ti + 1), f = fighter();
   const hero = $('#pw-hero'), dn = dayNumber(today);
+  const rc = recapLine(today);
+  $('#pw-recap').innerHTML = `<div class="pw-recap__e">${rc.e}</div><div class="pw-recap__b">${rc.b}</div>`;
   hero.style.setProperty('--aura', tier.aura); hero.style.setProperty('--aura2', tier.aura2);
+  $('#view-power').style.setProperty('--tier', tier.aura); $('#view-power').style.setProperty('--tier2', tier.aura2);
   Aura.style(tier, ti);
 
   // hero
@@ -971,7 +1094,9 @@ function drawPower(today) {
   $('#pw-segs').innerHTML = req.map((_, i) => `<i class="pw-seg${i < doneT ? ' is-on' : ''}"></i>`).join('');
   $('#pw-charge-t').textContent = `${doneT}/${req.length}`;
   $('#pw-charge').classList.toggle('is-full', full);
-  $('#pw-ready').textContent = full ? 'Kamehameha ready' : dn < 1 ? 'Charging starts on day 1' : `${req.length - doneT} anchor${req.length - doneT === 1 ? '' : 's'} to full charge`;
+  $('#pw-charge-k').textContent = `${f.charge} charge · today`;
+  if (full) $('#pw-ready').innerHTML = `<button type="button" class="pw-fire" id="pw-fire">Fire ${esc(f.move)}</button>`;
+  else $('#pw-ready').textContent = dn < 1 ? 'Charging starts on day 1' : `${req.length - doneT} anchor${req.length - doneT === 1 ? '' : 's'} to full charge`;
 
   // totals strip
   const arcSoFar = dn < 1 ? [] : arcDates(k.start, today < endDate() ? today : endDate());
@@ -1007,7 +1132,7 @@ function drawPower(today) {
   else {
     const info = stats.pop();
     $('#pw-radar').innerHTML = radarSVG(stats);
-    $('#pw-radar-note').textContent = `Last ${info.days} day${info.days === 1 ? '' : 's'}. STR lift days and 1RM gain · SPD runs and steps · KI morning window, decompression, SATS · SENZU sleep, protein, rinse · DISC clean days, night close, nicotine-free · WIS reading.`;
+    $('#pw-radar-note').textContent = `Last ${info.days} day${info.days === 1 ? '' : 's'}. STR lift days and 1RM gain · SPD runs and steps · KI morning window, decompression, SATS · SENZU sleep, protein, rinse · DISC clean days, night close · WIS reading.`;
   }
 
   // battle log
@@ -1072,13 +1197,21 @@ function sampleState() {
       const pages = {};
       if (checks.read) { const b = read.findIndex((r, j) => r < BOOKS[j].p); if (b >= 0) { const p = Math.min(BOOKS[b].p - read[b], 9 + Math.floor(rnd() * 10)); read[b] += p; pages[BOOKS[b].t] = p; } }
       st.days[d] = normalizeDay({ date: d, sleep_hours: sleep, steps, weight_lb: i % 2 === 0 && !isToday ? +(225 - i * 0.17 + (rnd() - 0.5) * 1.3).toFixed(1) : null,
-        nicotine: i === 17, alcohol_drinks: i === 30 ? 3 : rnd() < 0.04 ? 1 : 0, notes: '', checks, lifts, pages, updated_at: '' });
+        nicotine: false, alcohol_drinks: i === 30 ? 3 : rnd() < 0.04 ? 1 : 0, notes: '', checks, lifts, pages, updated_at: '' });
     }
     return st;
   });
 }
 
 function bindPower() {
+  PW.fighter = FIGHTERS[lsGet('arc.fighter', 'vegeta')] ? lsGet('arc.fighter', 'vegeta') : 'vegeta';
+  applyFighter();
+  $('#pw-roster').addEventListener('click', e => {
+    const b = e.target.closest('.pw-card'); if (!b || b.dataset.f === PW.fighter) return;
+    PW.fighter = b.dataset.f; lsSet('arc.fighter', PW.fighter); applyFighter(); renderPower();
+    toast(`${fighter().name} steps in`);
+  });
+  $('#pw-ready').addEventListener('click', e => { if (e.target.closest('#pw-fire')) fireBeam(); });
   $('#pw-sample').addEventListener('click', () => {
     PW.sample = !PW.sample;
     $('#pw-sample').setAttribute('aria-pressed', PW.sample ? 'true' : 'false');
