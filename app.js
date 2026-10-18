@@ -439,7 +439,9 @@ function showTab(name) {
   view.tab = name;
   $$('.view').forEach(v => v.classList.toggle('is-active', v.id === 'view-' + name));
   $$('.tab').forEach(t => t.classList.toggle('is-active', t.dataset.view === name));
+  document.body.classList.toggle('on-power', name === 'power');
   window.scrollTo({ top: 0 });
+  if (name === 'power') { PW.shown = 0; renderPower(); Aura.start(); } else if (typeof Aura !== 'undefined') Aura.stop();
 }
 
 function bootCore() {
@@ -687,11 +689,410 @@ function renderReading() {
   $('#food-kcal').textContent = `${(isDiet(todayYMD()) ? cfg().kcalBreak : cfg().kcal).toLocaleString()} kcal${isDiet(todayYMD()) ? ' · diet break' : ''}`;
 }
 
+// ================================================================== POWER (scouter dashboard)
+
+const TIERS = [
+  { min: 0,      name: 'Base form',         jp: '通常',             aura: '#8FB8FF', aura2: '#EAF2FF' },
+  { min: 9000,   name: 'Kaioken',           jp: '界王拳',           aura: '#FF3B30', aura2: '#FFB199' },
+  { min: 25000,  name: 'Super Saiyan',      jp: '超サイヤ人',       aura: '#FFD23F', aura2: '#FFF6C2' },
+  { min: 50000,  name: 'Super Saiyan 2',    jp: '超サイヤ人2',      aura: '#FFD23F', aura2: '#FFFFFF', bolts: true },
+  { min: 80000,  name: 'Super Saiyan 3',    jp: '超サイヤ人3',      aura: '#FFC21A', aura2: '#FFF0A0', bolts: true },
+  { min: 115000, name: 'Super Saiyan God',  jp: '超サイヤ人ゴッド', aura: '#FF4D6D', aura2: '#FFC2CF' },
+  { min: 150000, name: 'Super Saiyan Blue', jp: '超サイヤ人ブルー', aura: '#34C8FF', aura2: '#D6F5FF' },
+  { min: 190000, name: 'Ultra Instinct',    jp: '身勝手の極意',     aura: '#C9D6EA', aura2: '#FFFFFF', bolts: true }
+];
+const ANCHOR_LABEL = { sleep: 'Sleep 7.5 h', morning_window: 'Morning window', protein: 'Protein target', steps: 'Steps target', train: 'Training session',
+  decompress: 'Decompression', read: 'Read 20 min', night_close: 'Night close', rinse: 'Rinse + Pulmicort', sats: 'SATS' };
+const REDUCE = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+const PW = { sample: false, sampleS: null, shown: 0, countRaf: 0 };
+const fmtN = n => Math.round(n).toLocaleString('en-US');
+const abbr = n => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n));
+
+function withState(st, fn) { const prev = S; S = st; try { return fn(); } finally { S = prev; } }
+const sumPages = day => Object.values(day.pages || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+const arcDates = (from, to) => { const out = []; for (let d = from; d <= to; d = addDays(d, 1)) out.push(d); return out; };
+function tierIndex(p) { let i = 0; TIERS.forEach((t, j) => { if (p >= t.min) i = j; }); return i; }
+
+/** Cumulative power, its sources, and the live streak. Pure over S. */
+function powerReport(today) {
+  const k = cfg(), last = today < endDate() ? today : endDate();
+  const src = { discipline: 0, training: 0, strength: 0, wisdom: 0, gravity: 0, penalties: 0 };
+  let streak = 0, best = 0;
+  if (today >= k.start) arcDates(k.start, last).forEach(d => {
+    const day = S.days[d];
+    if (!day) { if (d < today) streak = 0; return; }
+    const req = itemsFor(d).filter(i => i.req), done = req.filter(i => day.checks[i.key]).length;
+    src.discipline += done * 20;
+    if (done === req.length) { streak++; best = Math.max(best, streak); src.discipline += Math.round(300 * (1 + Math.min(streak, 30) / 30)); }
+    else if (d < today) streak = 0;
+    if (day.checks.train && sessionFor(d).type !== 'rest') src.training += 250;
+    src.wisdom += sumPages(day) * 2;
+    if (day.nicotine) src.penalties -= 500;
+    src.penalties -= 100 * (day.alcohol_drinks || 0);
+  });
+  MAIN_LIFTS.forEach(l => {
+    let top = 0;
+    Object.keys(S.days).forEach(d => { const x = S.days[d].lifts && S.days[d].lifts[l]; if (d >= k.start && x && x.weight > 0 && x.reps > 0) top = Math.max(top, epley(x.weight, x.reps)); });
+    src.strength += Math.round(top * 5);
+  });
+  const w = weighIns();
+  if (w.length > 1) src.gravity = Math.max(0, Math.round((w[0].w - w[w.length - 1].w) * 500));
+  const total = Math.max(0, 1000 + Object.values(src).reduce((a, b) => a + b, 0));
+  return { total, src, streak, best, mult: 1 + Math.min(streak, 30) / 30 };
+}
+
+/** One entry per arc week that has started: clean count, what a Dragon Ball needs, whether it's earned. */
+function arcWeeks(today) {
+  const k = cfg(), end = endDate(), out = [];
+  for (let w = 1; w <= Math.ceil(k.total / 7); w++) {
+    const ws = addDays(k.start, (w - 1) * 7);
+    const len = Math.min(7, daysBetween(ws, end) + 1), we = addDays(ws, len - 1);
+    const need = Math.min(6, len);
+    let clean = 0;
+    if (ws <= today) arcDates(ws, we < today ? we : today).forEach(d => { if (isClean(d)) clean++; });
+    out.push({ w, ws, we, len, need, clean, started: ws <= today, done: we < today, now: ws <= today && today <= we, earned: ws <= today && clean >= need,
+      deload: k.deload.includes(w), diet: k.diet.includes(w) });
+  }
+  return out;
+}
+
+/** Six 0–100 attributes over the last 28 completed days (today counts once it's clean). */
+function scouterStats(today) {
+  const k = cfg();
+  const from = addDays(today, -28) > k.start ? addDays(today, -28) : k.start;
+  const dates = from <= addDays(today, -1) ? arcDates(from, addDays(today, -1)) : [];
+  if (today >= k.start && isClean(today)) dates.push(today);
+  if (!dates.length) return null;
+  const has = (d, key) => !!(S.days[d] && S.days[d].checks[key]);
+  const rate = (key, pred) => { const ds = pred ? dates.filter(pred) : dates; return ds.length ? ds.filter(d => has(d, key)).length / ds.length : null; };
+  const avg = (...xs) => { const v = xs.filter(x => x !== null && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0; };
+  const liftDay = d => sessionFor(d).type === 'lift', runDay = d => sessionFor(d).type === 'run';
+  const gains = MAIN_LIFTS.map(l => {
+    const es = Object.keys(S.days).sort().map(d => S.days[d].lifts && S.days[d].lifts[l]).filter(x => x && x.weight > 0 && x.reps > 0);
+    return es.length > 1 ? epley(es[es.length - 1].weight, es[es.length - 1].reps) / epley(es[0].weight, es[0].reps) - 1 : null;
+  }).filter(x => x !== null);
+  const adherence = rate('train', liftDay);
+  const str = gains.length ? 0.75 * (adherence ?? 0) + 0.25 * Math.min(1, Math.max(0, avg(...gains)) / 0.15) : (adherence ?? 0);
+  const pagesPerDay = dates.reduce((s, d) => s + (S.days[d] ? sumPages(S.days[d]) : 0), 0) / dates.length;
+  const arcPace = BOOKS.reduce((s, b) => s + b.p, 0) / k.total;
+  const nicFree = dates.filter(d => !(S.days[d] && S.days[d].nicotine)).length / dates.length;
+  return [
+    { k: 'STR', name: 'Strength: lift-day adherence and est. 1RM gain', v: str },
+    { k: 'SPD', name: 'Speed: run days and steps', v: avg(rate('train', runDay), rate('steps')) },
+    { k: 'KI', name: 'Ki: morning window, decompression, SATS', v: avg(rate('morning_window'), rate('decompress'), rate('sats')) },
+    { k: 'SENZU', name: 'Recovery: sleep, protein, rinse', v: avg(rate('sleep'), rate('protein'), rate('rinse')) },
+    { k: 'DISC', name: 'Discipline: clean days, night close, nicotine-free', v: avg(dates.filter(isClean).length / dates.length, rate('night_close'), nicFree) },
+    { k: 'WIS', name: 'Wisdom: reading and page pace', v: avg(rate('read'), Math.min(1, pagesPerDay / arcPace)) }
+  ].map(x => Object.assign(x, { v: Math.round(Math.max(0, Math.min(1, x.v)) * 100) })).concat([{ days: dates.length }]);
+}
+
+// ---------- svg builders
+
+const STARS = { 1: [[0, 0]], 2: [[-.2, -.16], [.2, .16]], 3: [[0, -.24], [-.22, .15], [.22, .15]], 4: [[-.2, -.2], [.2, -.2], [-.2, .2], [.2, .2]],
+  5: [[0, -.27], [-.26, -.06], [.26, -.06], [-.16, .25], [.16, .25]], 6: [[-.19, -.26], [.19, -.26], [-.29, 0], [.29, 0], [-.19, .26], [.19, .26]],
+  7: [[0, 0], [0, -.3], [.27, -.15], [.27, .15], [0, .3], [-.27, .15], [-.27, -.15]] };
+function starPts(cx, cy, r) {
+  const p = [];
+  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; p.push((cx + Math.cos(a) * rr).toFixed(1) + ',' + (cy + Math.sin(a) * rr).toFixed(1)); }
+  return p.join(' ');
+}
+function ballSVG(n) {
+  const id = 'db' + n + Math.random().toString(36).slice(2, 6), size = n === 1 ? 13 : n <= 4 ? 10 : 8.5;
+  return `<svg viewBox="0 0 100 100" role="img" aria-label="${n}-star Dragon Ball"><defs><radialGradient id="${id}" cx="38%" cy="32%" r="70%">
+<stop offset="0" stop-color="#FFF4C4"/><stop offset=".32" stop-color="#FFC54D"/><stop offset=".72" stop-color="#F7931E"/><stop offset="1" stop-color="#B9520A"/></radialGradient></defs>
+<circle cx="50" cy="50" r="46" fill="url(#${id})" stroke="#7A3606" stroke-width="1.5"/>
+${STARS[n].map(([x, y]) => `<polygon points="${starPts(50 + x * 64, 54 + y * 64, size)}" fill="#D7261E"/>`).join('')}
+<ellipse cx="35" cy="27" rx="15" ry="8" fill="#fff" fill-opacity=".55" transform="rotate(-32 35 27)"/></svg>`;
+}
+
+function radarSVG(stats) {
+  const W = 320, H = 296, cx = 160, cy = 150, R = 90, n = stats.length;
+  const pt = (i, r) => { const a = -Math.PI / 2 + i * 2 * Math.PI / n; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; };
+  const poly = f => stats.map((s, i) => pt(i, f(s)).map(v => v.toFixed(1)).join(',')).join(' ');
+  let g = '';
+  [.25, .5, .75, 1].forEach(f => { g += `<polygon class="g-line" points="${poly(() => R * f)}"/>`; });
+  stats.forEach((s, i) => { const [x, y] = pt(i, R); g += `<line class="g-axis" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; });
+  g += `<polygon class="r-area" points="${poly(s => Math.max(3, R * s.v / 100))}"/>`;
+  stats.forEach((s, i) => { const [x, y] = pt(i, Math.max(3, R * s.v / 100)); g += `<circle class="r-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"/>`; });
+  stats.forEach((s, i) => {
+    const [x, y] = pt(i, R + 24), anchor = x < cx - 8 ? 'end' : x > cx + 8 ? 'start' : 'middle';
+    const ty = i === 0 ? y - 8 : i === n / 2 ? y + 2 : y - 4;
+    g += `<g><title>${esc(s.name)}: ${s.v}</title><text class="t-key" x="${x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}">${s.k}</text>` +
+         `<text class="t-val" x="${x.toFixed(1)}" y="${(ty + 15).toFixed(1)}" text-anchor="${anchor}">${s.v}</text></g>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Scouter stats: ${stats.map(s => s.k + ' ' + s.v).join(', ')}">${g}</svg>`;
+}
+
+function barsSVG(weeks) {
+  const W = 340, H = 176, PL = 22, PR = 10, PT = 22, PB = 24, slots = 8, band = (W - PL - PR) / slots;
+  const sy = v => PT + (7 - v) / 7 * (H - PT - PB);
+  let g = '';
+  [0, 7].forEach(v => { g += `<line class="g-line" x1="${PL}" x2="${W - PR}" y1="${sy(v)}" y2="${sy(v)}"/><text class="t-hud" x="${PL - 6}" y="${sy(v) + 3}" text-anchor="end">${v}</text>`; });
+  g += `<line class="b-line" x1="${PL}" x2="${W - PR}" y1="${sy(6)}" y2="${sy(6)}"/>`;
+  weeks.forEach((wk, i) => {
+    const x = PL + i * band + band * 0.2, bw = band * 0.6, y = sy(Math.max(wk.clean, 0.06)), h = Math.max(1, sy(0) - y);
+    g += `<g><title>Week ${wk.w}: ${wk.clean} clean of ${wk.len}${wk.now ? ' so far' : ''}${wk.earned ? ', Dragon Ball earned' : ''}</title>` +
+         `<rect class="${wk.earned ? 'b-on' : 'b-off'}${wk.now ? ' b-now' : ''}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3"/>` +
+         `<text class="t-val" x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" text-anchor="middle">${wk.clean}</text>` +
+         `<text class="t-hud" x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${wk.now ? 'NOW' : 'W' + wk.w}</text></g>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Clean days per week">${g}</svg>`;
+}
+
+// ---------- ki aura (canvas)
+
+const Aura = {
+  on: false, ready: false, raf: 0, parts: [], bolts: [], w: 0, h: 0, c1: '#8FB8FF', c2: '#EAF2FF', boltsOn: false, power: 1,
+  init() {
+    this.cv = $('#pw-aura');
+    if (!this.cv || !this.cv.getContext) return;
+    this.ctx = this.cv.getContext('2d'); this.ready = true; this.makeSprite();
+    if ('ResizeObserver' in window) new ResizeObserver(() => this.size()).observe($('#pw-hero'));
+  },
+  size() {
+    const r = $('#pw-hero').getBoundingClientRect(); if (!r.width) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.w = r.width; this.h = r.height;
+    this.cv.width = Math.round(r.width * dpr); this.cv.height = Math.round(r.height * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!this.on) this.still();
+  },
+  makeSprite() {
+    const s = document.createElement('canvas'); s.width = s.height = 64;
+    const g = s.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, this.c2); gr.addColorStop(0.18, this.c1); gr.addColorStop(0.55, this.c1 + '66'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); this.sprite = s;
+  },
+  style(tier, idx) {
+    const changed = tier.aura !== this.c1 || tier.aura2 !== this.c2;
+    this.c1 = tier.aura; this.c2 = tier.aura2; this.boltsOn = !!tier.bolts; this.power = 0.75 + idx * 0.16;
+    if (changed && this.ready) { this.makeSprite(); if (!this.on) this.still(); }
+  },
+  spawn() {
+    const off = (Math.random() + Math.random()) - 1, spread = Math.min(this.w * 0.5, 340);
+    this.parts.push({ x: this.w / 2 + off * spread, y: this.h + 6 + Math.random() * 12, vx: -off * 0.2 + (Math.random() - 0.5) * 0.3,
+      vy: -(1.3 + Math.random() * 2.3) * this.power, r: (14 + Math.random() * 26) * (1 - Math.abs(off) * 0.35), life: 0,
+      max: (60 + Math.random() * 60) * (1.2 - Math.abs(off) * 0.55) * Math.min(1.6, this.h / 380) });
+  },
+  bolt() {
+    const pts = [[this.w / 2 + (Math.random() - 0.5) * this.w * 0.7, this.h * (0.45 + Math.random() * 0.5)]];
+    for (let i = 0; i < 6; i++) { const [x, y] = pts[pts.length - 1]; pts.push([x + (Math.random() - 0.5) * 30, y - 10 - Math.random() * 18]); }
+    this.bolts.push({ pts, life: 7 });
+  },
+  step() {
+    const n = Math.round(2 + 2 * this.power);
+    for (let i = 0; i < n; i++) this.spawn();
+    this.parts.forEach(p => { p.x += p.vx + Math.sin((p.life + p.x) * 0.06) * 0.4; p.y += p.vy; p.life++; });
+    this.parts = this.parts.filter(p => p.life < p.max && p.y > -60);
+    if (this.boltsOn && Math.random() < 0.06) this.bolt();
+    this.bolts.forEach(b => b.life--); this.bolts = this.bolts.filter(b => b.life > 0);
+  },
+  draw() {
+    const c = this.ctx; c.clearRect(0, 0, this.w, this.h); c.globalCompositeOperation = 'lighter';
+    this.parts.forEach(p => {
+      const t = p.life / p.max, r = p.r * (1 - t * 0.45);
+      c.globalAlpha = Math.sin(Math.PI * Math.min(1, t * 1.15)) * 0.34;
+      c.drawImage(this.sprite, p.x - r * 0.7, p.y - r * 1.7, r * 1.4, r * 3.4);
+    });
+    this.bolts.forEach(b => {
+      c.globalAlpha = b.life / 7; c.strokeStyle = this.c2; c.lineWidth = 2; c.shadowColor = this.c1; c.shadowBlur = 14;
+      c.beginPath(); b.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.stroke(); c.shadowBlur = 0;
+    });
+    c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+  },
+  still() { if (!this.ready || !this.w) return; this.parts = []; this.bolts = []; for (let i = 0; i < 140; i++) this.step(); this.bolts = []; this.draw(); },
+  start() {
+    if (!this.ready) this.init(); if (!this.ready) return;
+    this.size();
+    if (REDUCE || this.on) return;
+    this.on = true;
+    const loop = () => { if (!this.on) return; this.step(); this.draw(); this.raf = requestAnimationFrame(loop); };
+    this.raf = requestAnimationFrame(loop);
+  },
+  stop() { this.on = false; cancelAnimationFrame(this.raf); }
+};
+
+function countTo(to) {
+  const el = $('#pw-power'), lens = $('#pw-lens-read'), from = PW.shown || 0;
+  cancelAnimationFrame(PW.countRaf);
+  el.setAttribute('aria-label', 'Power level ' + fmtN(to));
+  if (REDUCE || from === to) { PW.shown = to; el.textContent = fmtN(to); lens.textContent = abbr(to); return; }
+  const t0 = performance.now(), dur = from === 0 ? 1700 : 600;
+  const tick = t => {
+    const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 4);
+    el.textContent = fmtN(from + (to - from) * e);
+    lens.textContent = p < 1 ? String(Math.floor(Math.random() * 99999)).padStart(5, '0') : abbr(to);
+    if (p < 1) PW.countRaf = requestAnimationFrame(tick);
+    else { PW.shown = to; revealStamp(to); }
+  };
+  PW.countRaf = requestAnimationFrame(tick);
+}
+function revealStamp(p) {
+  const st = $('#pw-stamp');
+  st.hidden = p <= 9000;
+  if (st.hidden || REDUCE) return;
+  st.classList.remove('is-in'); void st.offsetWidth; st.classList.add('is-in');
+  let seen = false; try { seen = sessionStorage.getItem('arc.9000') === '1'; sessionStorage.setItem('arc.9000', '1'); } catch (e) {}
+  if (!seen) { const h = $('#pw-hero'); h.classList.remove('is-shake'); void h.offsetWidth; h.classList.add('is-shake'); }
+}
+
+// ---------- render
+
+function renderPower() {
+  if (view.tab !== 'power') return;
+  const st = PW.sample ? (PW.sampleS || (PW.sampleS = sampleState())) : S;
+  withState(st, () => drawPower(todayYMD()));
+}
+
+function drawPower(today) {
+  const k = cfg(), rep = powerReport(today), ti = tierIndex(rep.total), tier = TIERS[ti], next = TIERS[ti + 1];
+  const hero = $('#pw-hero'), dn = dayNumber(today);
+  hero.style.setProperty('--aura', tier.aura); hero.style.setProperty('--aura2', tier.aura2);
+  Aura.style(tier, ti);
+
+  // hero
+  $('#pw-hud').textContent = dn < 1 ? `Arc starts ${fmtShort(k.start)} · scouter calibrating`
+    : dn > k.total ? `Arc complete · ${k.total} days` : `Target locked · day ${pad(dn, 3)} / ${k.total} · week ${weekOf(today)}`;
+  countTo(rep.total);
+  if (PW.shown === rep.total) revealStamp(rep.total); else if (rep.total <= 9000) $('#pw-stamp').hidden = true;
+  $('#pw-tier').textContent = tier.name;
+  $('#pw-tierjp').textContent = tier.jp;
+  if (next) {
+    $('#pw-next-fill').style.width = ((rep.total - tier.min) / (next.min - tier.min) * 100).toFixed(1) + '%';
+    $('#pw-next').innerHTML = `Next form · <b>${esc(next.name)}</b> at ${fmtN(next.min)} · ${fmtN(next.min - rep.total)} to go`;
+  } else {
+    $('#pw-next-fill').style.width = '100%';
+    $('#pw-next').innerHTML = '<b>Final form.</b> Hold it to day 180.';
+  }
+  const req = itemsFor(today).filter(i => i.req), dayT = S.days[today];
+  const doneT = req.filter(i => dayT && dayT.checks[i.key]).length, full = doneT === req.length;
+  $('#pw-segs').innerHTML = req.map((_, i) => `<i class="pw-seg${i < doneT ? ' is-on' : ''}"></i>`).join('');
+  $('#pw-charge-t').textContent = `${doneT}/${req.length}`;
+  $('#pw-charge').classList.toggle('is-full', full);
+  $('#pw-ready').textContent = full ? 'Kamehameha ready' : dn < 1 ? 'Charging starts on day 1' : `${req.length - doneT} anchor${req.length - doneT === 1 ? '' : 's'} to full charge`;
+
+  // totals strip
+  const arcSoFar = dn < 1 ? [] : arcDates(k.start, today < endDate() ? today : endDate());
+  const clean = arcSoFar.filter(isClean).length;
+  const w = weighIns(), lost = w.length > 1 ? w[0].w - w[w.length - 1].w : 0, cur = w.length ? w[w.length - 1].w : null;
+  const pages = Object.keys(S.days).filter(d => d >= k.start).reduce((s, d) => s + sumPages(S.days[d]), 0);
+  const finished = BOOKS.filter(b => Object.keys(S.days).reduce((s, d) => s + (S.days[d].pages[b.t] || 0), 0) >= b.p).length;
+  $('#pw-stats').innerHTML = [
+    [rep.streak, 'd', 'Streak', `Kaioken ×${rep.mult.toFixed(2)}${rep.best > rep.streak ? ` · best ${rep.best}` : ''}`],
+    [clean, `/${arcSoFar.length || 0}`, 'Clean days', arcSoFar.length ? `${Math.round(clean / arcSoFar.length * 100)}% of the arc so far` : 'Starts day 1'],
+    [lost > 0 ? lost.toFixed(1) : '0', 'lb', 'Gravity', cur !== null ? `${cur.toFixed(1)} lb now · ${Math.max(0, cur - k.goal).toFixed(1)} to ${k.goal}` : `${k.startW} → ${k.goal} lb`],
+    [fmtN(pages), 'pp', 'Wisdom', `${finished} of ${BOOKS.length} books finished`]
+  ].map(([v, u, kk, s]) => `<div class="pw-stat"><div class="pw-stat__v">${v}<small>${esc(u)}</small></div><div class="pw-stat__k">${kk}</div><div class="pw-stat__s">${esc(s)}</div></div>`).join('');
+
+  // dragon balls
+  const weeks = arcWeeks(today), earned = weeks.filter(x => x.earned).length;
+  const summons = Math.floor(earned / 7), lit = earned === 0 ? 0 : earned - 7 * Math.floor((earned - 1) / 7);
+  $('#pw-balls').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(n => `<div class="pw-ball ${n <= lit ? 'is-on' : 'is-off'}">${ballSVG(n)}</div>`).join('');
+  const nowWk = weeks.find(x => x.now);
+  let note = `<b>${earned}</b> Dragon Ball${earned === 1 ? '' : 's'} earned over the arc. A week with six clean days earns one.`;
+  if (nowWk) {
+    const left = daysBetween(today, nowWk.we);
+    note += nowWk.earned ? ` This week's ball is <b>already yours</b>.`
+      : nowWk.clean + left + (isClean(today) ? 0 : 1) >= nowWk.need
+        ? ` This week: <b>${nowWk.clean}</b> clean, need ${nowWk.need}, ${left + 1} day${left ? 's' : ''} left including today.`
+        : ` This week's ball is out of reach. Set up next week.`;
+  } else if (dn < 1) note = 'Dragon Balls start on day 1. A week with six clean days earns one; collect seven to summon the dragon.';
+  $('#pw-balls-note').innerHTML = note + (summons ? `<div class="pw-wish">Shenron summoned ×${summons}. Make the wish count.</div>` : '');
+
+  // scouter stats
+  const stats = scouterStats(today);
+  if (!stats) { $('#pw-radar').innerHTML = '<div class="pw-empty">Scouter calibrating · readings after day 1</div>'; $('#pw-radar-note').textContent = ''; }
+  else {
+    const info = stats.pop();
+    $('#pw-radar').innerHTML = radarSVG(stats);
+    $('#pw-radar-note').textContent = `Last ${info.days} day${info.days === 1 ? '' : 's'}. STR lift days and 1RM gain · SPD runs and steps · KI morning window, decompression, SATS · SENZU sleep, protein, rinse · DISC clean days, night close, nicotine-free · WIS reading.`;
+  }
+
+  // battle log
+  const started = weeks.filter(x => x.started).slice(-8);
+  $('#pw-bars').innerHTML = started.length ? barsSVG(started) : '<div class="pw-empty">No battles yet · week 1 starts day 1</div>';
+
+  // weak points
+  const from14 = addDays(today, -14) > k.start ? addDays(today, -14) : k.start;
+  const win = from14 <= addDays(today, -1) ? arcDates(from14, addDays(today, -1)) : [];
+  if (!win.length) $('#pw-weak').innerHTML = '<div class="pw-empty">No openings found yet · check back after day 2</div>';
+  else {
+    const rows = req.map(it => ({ key: it.key, label: ANCHOR_LABEL[it.key] || it.title, p: Math.round(win.filter(d => S.days[d] && S.days[d].checks[it.key]).length / win.length * 100) }))
+      .sort((a, b) => a.p - b.p);
+    $('#pw-weak').innerHTML = rows.map((r, i) => {
+      const col = r.p >= 85 ? 'var(--pw-scouter)' : r.p >= 60 ? 'var(--pw-ki)' : 'var(--pw-red)';
+      return `<div class="pw-wrow"><span class="pw-wrow__n">${esc(r.label)}${i < 3 && r.p < 90 ? '<span class="pw-tag">Weak</span>' : ''}</span>` +
+        `<span class="pw-wrow__b"><i style="width:${r.p}%;background:${col}"></i></span><span class="pw-wrow__p" style="color:${col}">${r.p}%</span></div>`;
+    }).join('');
+  }
+
+  // time chamber
+  $('#pw-chamber').innerHTML = weeks.map(x => {
+    const cls = ['pw-wk', x.done ? 'is-done' : '', x.now ? 'is-now' : '', x.earned ? 'is-ball' : '', x.deload ? 'is-deload' : '', x.diet ? 'is-diet' : ''].join(' ');
+    return `<div class="${cls}" title="Week ${x.w} · ${fmtShort(x.ws)}${x.deload ? ' · deload' : ''}${x.diet ? ' · diet break' : ''}">${x.w}</div>`;
+  }).join('');
+  const nd = weeks.find(x => x.deload && x.ws > today), nb = weeks.find(x => x.diet && x.ws > today);
+  const parts = [];
+  if (dn < 1) parts.push(`The chamber opens <b>${fmtShort(k.start)}</b>. ${k.total} days, ${weeks.length} weeks.`);
+  else parts.push(`<b>${Math.max(0, k.total - dn)}</b> days left in the chamber.`);
+  if (nd) parts.push(`Next deload: week ${nd.w}, ${fmtShort(nd.ws)} (in ${daysBetween(today, nd.ws)} days).`);
+  if (nb) parts.push(`Next diet break: week ${nb.w}, ${fmtShort(nb.ws)}.`);
+  $('#pw-chamber-note').innerHTML = parts.join(' ');
+
+  // power sources
+  const srcRows = [['Base', 1000], ['Discipline', rep.src.discipline], ['Training', rep.src.training], ['Strength', rep.src.strength],
+    ['Wisdom', rep.src.wisdom], ['Gravity', rep.src.gravity], ['Penalties', rep.src.penalties]];
+  const mx = Math.max(...srcRows.map(r => Math.abs(r[1])), 1);
+  $('#pw-src').innerHTML = srcRows.map(([n, v]) => `<div class="pw-srow${v < 0 ? ' is-neg' : ''}"><span class="pw-srow__n">${n}</span>` +
+    `<span class="pw-srow__b"><i style="width:${(Math.abs(v) / mx * 100).toFixed(1)}%"></i></span><span class="pw-srow__v">${v < 0 ? '−' : ''}${fmtN(Math.abs(v))}</span></div>`).join('');
+}
+
+/** A believable 72-day run ending today, for previewing the dashboard. Never saved or synced. */
+function sampleState() {
+  const today = todayYMD(), n = 72, start = addDays(today, -n);
+  let seed = 20261019;
+  const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const base = { 'Back squat': 225, 'Bench press': 185, 'Deadlift': 275, 'Overhead press': 115 };
+  const inc = { 'Back squat': 5, 'Bench press': 2.5, 'Deadlift': 10, 'Overhead press': 2.5 };
+  const st = { days: {}, config: { start_date: start } };
+  const read = BOOKS.map(() => 0);
+  return withState(st, () => {
+    for (let i = 0; i <= n; i++) {
+      const d = addDays(start, i), ses = sessionFor(d), isToday = i === n, good = !isToday && rnd() < 0.72;
+      const slip = { sats: 0.35, decompress: 0.45, protein: 0.6, night_close: 0.7 };
+      const checks = {};
+      itemsFor(d).forEach(it => { checks[it.key] = it.req ? (good || rnd() < (slip[it.key] ?? 0.85)) : rnd() < 0.72; });
+      if (isToday) Object.keys(checks).forEach(key => { checks[key] = ['sleep', 'morning_window', 'gargle', 'breakfast', 'am_stack', 'deep_work', 'protein', 'steps', 'train'].includes(key); });
+      const sleep = +(checks.sleep ? 7.5 + rnd() * 1.1 : 6.2 + rnd() * 1.2).toFixed(1);
+      const steps = Math.round(checks.steps ? 8000 + rnd() * 4000 : 5000 + rnd() * 2900);
+      const lifts = {};
+      if (ses.main && checks.train) lifts[ses.main] = { weight: base[ses.main] + Math.floor(i / 7) * inc[ses.main], reps: 6 + Math.floor(rnd() * 3) };
+      const pages = {};
+      if (checks.read) { const b = read.findIndex((r, j) => r < BOOKS[j].p); if (b >= 0) { const p = Math.min(BOOKS[b].p - read[b], 9 + Math.floor(rnd() * 10)); read[b] += p; pages[BOOKS[b].t] = p; } }
+      st.days[d] = normalizeDay({ date: d, sleep_hours: sleep, steps, weight_lb: i % 2 === 0 && !isToday ? +(225 - i * 0.17 + (rnd() - 0.5) * 1.3).toFixed(1) : null,
+        nicotine: i === 17, alcohol_drinks: i === 30 ? 3 : rnd() < 0.04 ? 1 : 0, notes: '', checks, lifts, pages, updated_at: '' });
+    }
+    return st;
+  });
+}
+
+function bindPower() {
+  $('#pw-sample').addEventListener('click', () => {
+    PW.sample = !PW.sample;
+    $('#pw-sample').setAttribute('aria-pressed', PW.sample ? 'true' : 'false');
+    $('#pw-ribbon').hidden = !PW.sample;
+    PW.shown = 0; renderPower();
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) Aura.stop(); else if (view.tab === 'power') Aura.start(); });
+}
+
 // ================================================================== BOOT
 
-RENDERERS.push(renderLog, renderReading);
+RENDERERS.push(renderLog, renderReading, renderPower);
 bootCore();
 bindLog();
+bindPower();
+if (location.hash === '#power') showTab('power');
 render();
 pull(true);
 scheduleFlush(300);

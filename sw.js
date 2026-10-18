@@ -1,6 +1,6 @@
 /* The Arc — service worker. Caches the shell so the pinned app opens with no signal.
    Data never goes through here: the app reads localStorage and talks to Apps Script directly. */
-const CACHE = 'arc-shell-v1';
+const CACHE = 'arc-shell-v2';
 const SHELL = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', e => {

@@ -15,7 +15,7 @@
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Bangers&family=Chakra+Petch:wght@500;700&family=Dela+Gothic+One&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -63,6 +63,80 @@
     <section id="checklist" aria-label="Daily protocol"></section>
 
     <div class="foot"><span>The Arc</span><span id="foot-range">19 Oct 2026 – 16 Apr 2027</span></div>
+  </main>
+
+
+  <!-- ================= POWER ================= -->
+  <main id="view-power" class="view pw" aria-label="Power">
+    <div class="pw-top">
+      <div class="pw-brand"><span class="pw-brand__k pw-jp" aria-hidden="true">修</span><span>Training arc · scouter</span></div>
+      <button type="button" class="pw-sample" id="pw-sample" aria-pressed="false">Sample data</button>
+    </div>
+    <div class="pw-ribbon" id="pw-ribbon" hidden>Sample · a made-up 72-day run, not your numbers</div>
+
+    <div class="pw-grid">
+      <section class="pw-hero" id="pw-hero" aria-label="Power level">
+        <canvas class="pw-aura" id="pw-aura" aria-hidden="true"></canvas>
+        <div class="pw-hud" id="pw-hud">Scouter online</div>
+        <div class="pw-lens" aria-hidden="true"><span class="pw-lens__top"><span class="pw-lens__x"></span>PWR</span><span class="pw-lens__read" id="pw-lens-read">00000</span></div>
+        <div class="pw-hero__in">
+          <div class="pw-label"><span class="pw-jp">戦闘力</span><span>Power level</span></div>
+          <div class="pw-power" id="pw-power">0</div>
+          <div class="pw-tier" id="pw-tier">Base form</div>
+          <div class="pw-tierjp pw-jp" id="pw-tierjp">通常</div>
+          <div class="pw-stamp" id="pw-stamp" hidden>It's over 9000!</div>
+          <div class="pw-next"><div class="pw-next__bar"><i id="pw-next-fill"></i></div><div class="pw-next__t" id="pw-next"></div></div>
+          <div class="pw-charge" id="pw-charge">
+            <div class="pw-charge__h"><span>Ki charge · today</span><span id="pw-charge-t">0/10</span></div>
+            <div class="pw-charge__segs" id="pw-segs"></div>
+            <div class="pw-charge__ready" id="pw-ready"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pw-panel pw-stats" id="pw-stats" aria-label="Totals"></section>
+
+      <section class="pw-panel">
+        <h2 class="pw-h"><b>Dragon Radar</b><span class="pw-jp">ドラゴンボール</span></h2>
+        <div class="pw-balls" id="pw-balls"></div>
+        <p class="pw-note" id="pw-balls-note"></p>
+      </section>
+
+      <section class="pw-panel">
+        <h2 class="pw-h"><b>Scouter Stats</b><span class="pw-jp">能力</span></h2>
+        <div class="pw-radar" id="pw-radar"></div>
+        <p class="pw-note" id="pw-radar-note"></p>
+      </section>
+
+      <section class="pw-panel">
+        <h2 class="pw-h"><b>Battle Log</b><span class="pw-jp">戦闘記録</span></h2>
+        <div class="pw-bars" id="pw-bars"></div>
+        <div class="pw-legend"><span><i class="lg-done"></i>ball earned</span><span><i class="lg-miss"></i>short</span><span><i class="lg-line"></i>dragon ball line · 6</span></div>
+        <p class="pw-note">Clean days per week, last eight weeks. Six clean days in a week earn a Dragon Ball.</p>
+      </section>
+
+      <section class="pw-panel">
+        <h2 class="pw-h"><b>Weak Points</b><span class="pw-jp">弱点</span></h2>
+        <div class="pw-weak" id="pw-weak"></div>
+        <p class="pw-note">Each anchor's hit rate over the last 14 days. The three lowest are tagged.</p>
+      </section>
+
+      <section class="pw-panel">
+        <h2 class="pw-h"><b>Time Chamber</b><span class="pw-jp">精神と時の部屋</span></h2>
+        <div class="pw-chamber" id="pw-chamber"></div>
+        <div class="pw-legend">
+          <span><i class="lg-done"></i>week done</span><span><i class="lg-now"></i>this week</span>
+          <span><i class="lg-ball">★</i>ball earned</span><span><i class="lg-deload"></i>deload</span><span><i class="lg-diet"></i>diet break</span>
+        </div>
+        <p class="pw-note" id="pw-chamber-note"></p>
+      </section>
+
+      <section class="pw-panel">
+        <h2 class="pw-h"><b>Power Sources</b><span class="pw-jp">気の源</span></h2>
+        <div class="pw-src" id="pw-src"></div>
+        <p class="pw-note">Base 1,000. Each required anchor +20. A clean day +300, scaled up to ×2 by your streak. A training session +250. Main-lift best est. 1RM ×5. Every page +2. Every lb lost +500. Nicotine −500 a day, each drink −100.</p>
+      </section>
+    </div>
   </main>
 
   <!-- ================= LOG ================= -->
@@ -164,6 +238,7 @@
 <nav class="tabs" aria-label="Sections">
   <div class="tabs__inner">
     <button type="button" class="tab is-active" data-view="today">Today</button>
+    <button type="button" class="tab tab--power" data-view="power">Power</button>
     <button type="button" class="tab" data-view="log">Log</button>
     <button type="button" class="tab" data-view="food">Food</button>
     <button type="button" class="tab" data-view="read">Read</button>
