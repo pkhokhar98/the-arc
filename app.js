@@ -4,7 +4,7 @@
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
-const API_URL = '';
+const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
 
 const C = {
   START: '2026-10-19', END: '2027-04-16', TOTAL: 180,

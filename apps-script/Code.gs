@@ -78,6 +78,7 @@ function ensureTabs(ss) {
     }
     // Keep date columns as plain text so Sheets never turns "2026-10-19" into a Date.
     if (headers[0] === 'date') sh.getRange(1, 1, Math.max(sh.getMaxRows(), 2), 1).setNumberFormat('@');
+    if (name === 'Config') sh.getRange(1, 2, Math.max(sh.getMaxRows(), 2), 1).setNumberFormat('@');
   });
   // Drop the default "Sheet1" if it is empty and we have our tabs.
   var def = ss.getSheetByName('Sheet1');
@@ -151,7 +152,7 @@ function writeTab(ss, name, objs) {
 
 function getConfig(ss) {
   var cfg = {};
-  readTab(ss, 'Config').forEach(function (r) { cfg[r.key] = r.value; });
+  readTab(ss, 'Config').forEach(function (r) { cfg[r.key] = (r.value instanceof Date) ? fmtDate(r.value) : r.value; });
   return cfg;
 }
 
