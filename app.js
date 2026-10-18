@@ -441,7 +441,7 @@ function showTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('is-active', t.dataset.view === name));
   document.body.classList.toggle('on-power', name === 'power');
   window.scrollTo({ top: 0 });
-  if (name === 'power') { PW.shown = 0; renderPower(); Aura.start(); } else if (typeof Aura !== 'undefined') Aura.stop();
+  if (name === 'power') { PW.shown = PW.cur = 0; renderPower(); Aura.start(); } else if (typeof Aura !== 'undefined') Aura.stop();
 }
 
 function bootCore() {
@@ -704,7 +704,7 @@ const TIERS = [
 const ANCHOR_LABEL = { sleep: 'Sleep 7.5 h', morning_window: 'Morning window', protein: 'Protein target', steps: 'Steps target', train: 'Training session',
   decompress: 'Decompression', read: 'Read 20 min', night_close: 'Night close', rinse: 'Rinse + Pulmicort', sats: 'SATS' };
 const REDUCE = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
-const PW = { sample: false, sampleS: null, shown: 0, countRaf: 0 };
+const PW = { sample: false, sampleS: null, shown: 0, cur: 0, countRaf: 0, countT: 0 };
 const fmtN = n => Math.round(n).toLocaleString('en-US');
 const abbr = n => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n));
 
@@ -913,19 +913,21 @@ const Aura = {
 };
 
 function countTo(to) {
-  const el = $('#pw-power'), lens = $('#pw-lens-read'), from = PW.shown || 0;
-  cancelAnimationFrame(PW.countRaf);
+  const el = $('#pw-power'), lens = $('#pw-lens-read'), from = PW.cur || 0;
+  cancelAnimationFrame(PW.countRaf); clearTimeout(PW.countT);
   el.setAttribute('aria-label', 'Power level ' + fmtN(to));
-  if (REDUCE || from === to) { PW.shown = to; el.textContent = fmtN(to); lens.textContent = abbr(to); return; }
+  const land = () => { cancelAnimationFrame(PW.countRaf); PW.cur = PW.shown = to; el.textContent = fmtN(to); lens.textContent = abbr(to); revealStamp(to); };
+  if (REDUCE || document.hidden || from === to) { land(); return; }
   const t0 = performance.now(), dur = from === 0 ? 1700 : 600;
   const tick = t => {
     const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 4);
-    el.textContent = fmtN(from + (to - from) * e);
+    PW.cur = Math.round(from + (to - from) * e);
+    el.textContent = fmtN(PW.cur);
     lens.textContent = p < 1 ? String(Math.floor(Math.random() * 99999)).padStart(5, '0') : abbr(to);
-    if (p < 1) PW.countRaf = requestAnimationFrame(tick);
-    else { PW.shown = to; revealStamp(to); }
+    if (p < 1) PW.countRaf = requestAnimationFrame(tick); else { clearTimeout(PW.countT); land(); }
   };
   PW.countRaf = requestAnimationFrame(tick);
+  PW.countT = setTimeout(land, dur + 400);   // frames can be paused (background tab); always land on the number
 }
 function revealStamp(p) {
   const st = $('#pw-stamp');
@@ -954,7 +956,7 @@ function drawPower(today) {
   $('#pw-hud').textContent = dn < 1 ? `Arc starts ${fmtShort(k.start)} · scouter calibrating`
     : dn > k.total ? `Arc complete · ${k.total} days` : `Target locked · day ${pad(dn, 3)} / ${k.total} · week ${weekOf(today)}`;
   countTo(rep.total);
-  if (PW.shown === rep.total) revealStamp(rep.total); else if (rep.total <= 9000) $('#pw-stamp').hidden = true;
+  if (rep.total <= 9000) $('#pw-stamp').hidden = true;
   $('#pw-tier').textContent = tier.name;
   $('#pw-tierjp').textContent = tier.jp;
   if (next) {
@@ -1081,7 +1083,7 @@ function bindPower() {
     PW.sample = !PW.sample;
     $('#pw-sample').setAttribute('aria-pressed', PW.sample ? 'true' : 'false');
     $('#pw-ribbon').hidden = !PW.sample;
-    PW.shown = 0; renderPower();
+    PW.shown = PW.cur = 0; renderPower();
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) Aura.stop(); else if (view.tab === 'power') Aura.start(); });
 }
