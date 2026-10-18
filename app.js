@@ -457,7 +457,240 @@ function bootCore() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
+// ================================================================== LOG
+
+function renderLog() {
+  const date = view.date, d = getDay(date), ses = sessionFor(date), today = todayYMD();
+  $('#log-date').textContent = (date === today ? 'today · ' : '') + fmtShort(date);
+  const setIf = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v ?? ''; };
+  setIf('#in-weight', d.weight_lb); setIf('#in-sleep', d.sleep_hours); setIf('#in-steps', d.steps); setIf('#in-notes', d.notes);
+  const lift = ses.main || null;
+  $('#lift-label').textContent = lift ? `Main lift · ${lift}` : 'Main lift';
+  $('#in-lift-w').disabled = !lift; $('#in-lift-r').disabled = !lift;
+  const l = lift ? d.lifts[lift] : null;
+  setIf('#in-lift-w', l ? l.weight : ''); setIf('#in-lift-r', l ? l.reps : '');
+  if (!lift) $('#lift-hint').textContent = `No main lift on a ${ses.name.toLowerCase()} day.`;
+  else if (l && l.weight > 0 && l.reps > 0) $('#lift-hint').textContent = `Est. 1RM ${epley(l.weight, l.reps).toFixed(0)} lb (Epley) · ${isDeload(date) ? 'deload week, same load, half the sets' : 'top set only'}`;
+  else $('#lift-hint').textContent = 'Top set only. Est. 1RM via Epley: w × (1 + reps/30).';
+  $('#in-nic').classList.toggle('is-on', !!d.nicotine); $('#in-nic').setAttribute('aria-checked', d.nicotine ? 'true' : 'false');
+  $('#alc-v').textContent = d.alcohol_drinks || 0;
+  renderChart(); renderLiftTable(); renderCalendar();
+}
+const epley = (w, r) => w * (1 + r / 30);
+
+function readLogInputs() {
+  const date = view.date, ses = sessionFor(date);
+  const num = id => { const v = $(id).value; return v === '' ? null : Number(v); };
+  mutate(date, d => {
+    d.weight_lb = num('#in-weight'); d.sleep_hours = num('#in-sleep'); d.steps = num('#in-steps'); d.notes = $('#in-notes').value.trim();
+    if (ses.main) {
+      const w = num('#in-lift-w'), r = num('#in-lift-r');
+      if (w > 0 && r > 0) d.lifts[ses.main] = { weight: w, reps: r }; else delete d.lifts[ses.main];
+    }
+  });
+}
+
+function bindLog() {
+  ['#in-weight', '#in-sleep', '#in-steps', '#in-lift-w', '#in-lift-r'].forEach(id => $(id).addEventListener('change', readLogInputs));
+  $('#in-notes').addEventListener('blur', () => { if ($('#in-notes').value.trim() !== (getDay(view.date).notes || '')) readLogInputs(); });
+  $('#log-save').addEventListener('click', () => { readLogInputs(); $('#log-status').textContent = 'Saved on device' + (apiUrl() ? ', sending' : ''); flush(); setTimeout(() => { $('#log-status').textContent = ''; }, 2500); });
+  $('#in-nic').addEventListener('click', () => mutate(view.date, d => { d.nicotine = !d.nicotine; }));
+  $('#alc-minus').addEventListener('click', () => mutate(view.date, d => { d.alcohol_drinks = Math.max(0, (d.alcohol_drinks || 0) - 1); }));
+  $('#alc-plus').addEventListener('click', () => mutate(view.date, d => { d.alcohol_drinks = (d.alcohol_drinks || 0) + 1; }));
+  // settings
+  $('#in-api').value = lsGet(LS.api, '') || API_URL;
+  $('#api-save').addEventListener('click', () => { lsSet(LS.api, $('#in-api').value.trim()); syncErr = ''; renderSync(); toast('URL saved'); flush(); pull(true); });
+  $('#api-test').addEventListener('click', async () => {
+    const st = $('#api-status'); st.textContent = 'Testing…';
+    lsSet(LS.api, $('#in-api').value.trim());
+    try { const j = await apiFetch('GET', { action: 'ping' }); st.textContent = `OK · backend v${j.version}`; syncErr = ''; pull(true); }
+    catch (e) { st.textContent = 'Failed: ' + e.message; }
+  });
+  $('#export-json').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), state: S, queue: Q }, null, 2)], { type: 'application/json' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `arc-${todayYMD()}.json` }); document.body.append(a); a.click(); a.remove();
+  });
+}
+
+// ------------------------------------------------------------------ weight chart
+
+function renderChart() {
+  const root = $('#chart'), k = cfg(), w = weighIns();
+  root.replaceChildren();
+  const W = 560, H = 230, PL = 34, PR = 12, PT = 12, PB = 26;
+  const x0 = 1, x1 = k.total;
+  const sx = dn => PL + (dn - x0) / (x1 - x0) * (W - PL - PR);
+  const ws = w.map(p => p.w);
+  const yMin = Math.floor((Math.min(k.goal, ...ws) - 4) / 5) * 5;
+  const yMax = Math.ceil((Math.max(k.startW, ...ws) + 4) / 5) * 5;
+  const sy = v => PT + (yMax - v) / (yMax - yMin) * (H - PT - PB);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `Weight over the arc, goal ${k.goal} lb`);
+  const el = (t, a, parent = svg) => { const e = document.createElementNS(ns, t); Object.entries(a).forEach(([q, v]) => e.setAttribute(q, v)); parent.append(e); return e; };
+  // grid + y axis
+  const grid = el('g', { class: 'grid' }), axis = el('g', { class: 'axis' });
+  const step = (yMax - yMin) > 40 ? 10 : 5;
+  for (let v = yMin; v <= yMax; v += step) { el('line', { x1: PL, x2: W - PR, y1: sy(v), y2: sy(v) }, grid); el('text', { x: PL - 6, y: sy(v) + 3, 'text-anchor': 'end' }, axis).textContent = v; }
+  // x axis: month starts
+  let m = parseYMD(k.start); m = new Date(m.getFullYear(), m.getMonth() + 1, 1, 12);
+  while (ymd(m) <= endDate()) { const dn = dayNumber(ymd(m)); el('text', { x: sx(dn), y: H - 8, 'text-anchor': 'middle' }, axis).textContent = MON[m.getMonth()].toUpperCase(); m = new Date(m.getFullYear(), m.getMonth() + 1, 1, 12); }
+  // corridor from first weigh-in
+  if (w.length) {
+    const f = w[0], fd = Math.max(1, dayNumber(f.date));
+    const slow = [], fast = [];
+    for (let dn = fd; dn <= x1; dn += 3) { const t = (dn - fd) / 7; slow.push([sx(dn), sy(f.w * Math.pow(0.995, t))]); fast.push([sx(dn), sy(f.w * Math.pow(0.99, t))]); }
+    const poly = slow.map(p => p.join(',')).concat(fast.slice().reverse().map(p => p.join(','))).join(' ');
+    el('polygon', { class: 'corridor', points: poly });
+    el('polyline', { class: 'corridor-edge', points: slow.map(p => p.join(',')).join(' ') });
+    el('polyline', { class: 'corridor-edge', points: fast.map(p => p.join(',')).join(' ') });
+  }
+  // goal
+  el('line', { class: 'goal', x1: PL, x2: W - PR, y1: sy(k.goal), y2: sy(k.goal) });
+  el('text', { x: W - PR, y: sy(k.goal) - 4, 'text-anchor': 'end', fill: 'var(--brass)', 'font-size': '10', 'font-family': 'var(--font)' }).textContent = `${k.goal} GOAL`;
+  // actual
+  const pts = w.map(p => ({ x: sx(Math.max(0, dayNumber(p.date))), y: sy(p.w), p }));
+  if (pts.length) {
+    el('polyline', { class: 'line', points: pts.map(p => `${p.x},${p.y}`).join(' ') });
+    pts.forEach((p, i) => el('circle', { class: 'pt' + (i === pts.length - 1 ? ' pt--last' : ''), cx: p.x, cy: p.y, r: i === pts.length - 1 ? 4 : 2.5 }));
+  } else {
+    el('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle', fill: 'var(--dim)', 'font-size': '12', 'font-family': 'var(--font)' }).textContent = 'No weigh-ins yet. Log weight to start the corridor.';
+  }
+  // hover / touch readout
+  const hov = el('g', { class: 'hover', style: 'display:none' });
+  const hl = el('line', { y1: PT, y2: H - PB }, hov), hc = el('circle', { r: 4 }, hov);
+  const tipBg = el('rect', { class: 'tip-bg', rx: 3, height: 18 }, hov), tip = el('text', { class: 'tip', y: 0 }, hov);
+  const show = clientX => {
+    if (!pts.length) return;
+    const r = svg.getBoundingClientRect(); const x = (clientX - r.left) / r.width * W;
+    let best = pts[0]; pts.forEach(p => { if (Math.abs(p.x - x) < Math.abs(best.x - x)) best = p; });
+    hov.style.display = ''; hl.setAttribute('x1', best.x); hl.setAttribute('x2', best.x); hc.setAttribute('cx', best.x); hc.setAttribute('cy', best.y);
+    tip.textContent = `${best.p.w.toFixed(1)} lb · ${fmtShort(best.p.date)}`;
+    const tw = tip.textContent.length * 6.2 + 12; let tx = Math.min(Math.max(best.x - tw / 2, PL), W - PR - tw); const ty = Math.max(PT, best.y - 28);
+    tipBg.setAttribute('x', tx); tipBg.setAttribute('y', ty); tipBg.setAttribute('width', tw); tip.setAttribute('x', tx + 6); tip.setAttribute('y', ty + 13);
+  };
+  svg.addEventListener('pointermove', e => show(e.clientX)); svg.addEventListener('pointerdown', e => show(e.clientX));
+  svg.addEventListener('pointerleave', () => { hov.style.display = 'none'; });
+  root.append(svg);
+
+  // projection
+  const ri = rateInfo(), pr = $('#projection');
+  if (!w.length) pr.textContent = 'Log your first weigh-in to start the corridor and the projection.';
+  else if (!ri) pr.textContent = `First weigh-in ${w[0].w.toFixed(1)} lb on ${fmtShort(w[0].date)}. A second weigh-in at least three days later starts the projection.`;
+  else if (ri.rate <= 0) pr.innerHTML = `No downward trend yet: <b>${esc(ri.last.w.toFixed(1))} lb</b> vs ${esc(ri.first.w.toFixed(1))} at the start.`;
+  else {
+    const weeks = (ri.last.w - k.goal) / ri.rate;
+    const when = addDays(ri.last.date, Math.round(weeks * 7));
+    const over = when > endDate();
+    pr.innerHTML = `At the current rate (<b class="${ri.cls}">${esc(ri.rate.toFixed(2))} lb/wk · ${esc(ri.pct.toFixed(2))} %</b>) you reach <b>${esc(k.goal)} lb</b> around <b>${esc(fmtLong(when))}</b>, in ${esc(Math.round(weeks))} weeks${over ? ', after the arc ends' : ''}.` +
+      (ri.cls === 'bad' ? ' Faster than 1 % a week costs muscle. Eat to the number.' : ri.cls === 'warn' ? ' Under 0.5 % a week. Check the protein and the steps before the calories.' : '');
+  }
+}
+
+// ------------------------------------------------------------------ lifts table
+
+function bestPerWeek(lift) {
+  const best = {};
+  Object.keys(S.days).forEach(date => { const l = S.days[date].lifts[lift]; if (!l || !(l.weight > 0 && l.reps > 0)) return; const wk = weekOf(date), v = epley(l.weight, l.reps); if (!best[wk] || v > best[wk]) best[wk] = v; });
+  return best;
+}
+function renderLiftTable() {
+  const t = $('#lifts-table'); t.replaceChildren();
+  t.append(h('thead', {}, h('tr', {}, h('th', {}, 'Lift'), h('th', { class: 'r' }, 'First'), h('th', { class: 'r' }, 'Latest'), h('th', { class: 'r' }, 'Best'))));
+  const tb = h('tbody', {});
+  MAIN_LIFTS.forEach(lift => {
+    const entries = Object.keys(S.days).sort().map(date => ({ date, l: S.days[date].lifts[lift] })).filter(e => e.l && e.l.weight > 0 && e.l.reps > 0);
+    if (!entries.length) { tb.append(h('tr', {}, h('td', { class: 'dimmed' }, lift), h('td', { class: 'r dimmed' }, '—'), h('td', { class: 'r dimmed' }, '—'), h('td', { class: 'r dimmed' }, '—'))); return; }
+    const first = epley(entries[0].l.weight, entries[0].l.reps), last = epley(entries[entries.length - 1].l.weight, entries[entries.length - 1].l.reps);
+    const best = Math.max(...entries.map(e => epley(e.l.weight, e.l.reps)));
+    const bw = bestPerWeek(lift), wks = Object.keys(bw).map(Number).sort((a, b) => a - b);
+    let flag = '';
+    if (wks.length >= 3) { const [a, b, c] = wks.slice(-3).map(x => bw[x]); if (c < b && b < a) flag = 'Down two weeks running. Fuelling, not programming.'; }
+    tb.append(h('tr', {},
+      h('td', {}, lift, flag ? h('div', { class: 'flag' }, flag) : null),
+      h('td', { class: 'r' }, first.toFixed(0)),
+      h('td', { class: 'r' }, last.toFixed(0), last > first ? h('span', { class: 'up' }, ' ↑') : null),
+      h('td', { class: 'r' }, best.toFixed(0))));
+  });
+  t.append(tb);
+}
+
+// ------------------------------------------------------------------ calendar
+
+function renderCalendar() {
+  const root = $('#cal'), k = cfg(), today = todayYMD(), end = endDate();
+  root.replaceChildren();
+  let cur = k.start;
+  const months = [];
+  while (cur <= end) {
+    const d = parseYMD(cur), key = `${d.getFullYear()}-${d.getMonth()}`;
+    let mo = months[months.length - 1];
+    if (!mo || mo.key !== key) { mo = { key, label: MON[d.getMonth()], cells: [] }; months.push(mo); }
+    mo.cells.push(cur); cur = addDays(cur, 1);
+  }
+  months.forEach(mo => {
+    const cells = h('div', { class: 'cal__cells' });
+    mo.cells.forEach(date => {
+      let cls = 'cell';
+      if (date > today) cls += ' cell--future';
+      else if (isClean(date)) cls += ' cell--clean';
+      else if (isPartial(date)) cls += ' cell--partial';
+      else cls += ' cell--missed';
+      if (isDeload(date)) cls += ' cell--deload';
+      if (isDiet(date)) cls += ' cell--diet';
+      if (date === today) cls += ' cell--today';
+      cells.append(h('button', { type: 'button', class: cls, title: `${fmtShort(date)} · day ${dayNumber(date)}`, 'aria-label': `${fmtShort(date)}, day ${dayNumber(date)}`,
+        onclick: () => { if (date <= today) { view.date = date; view.open.clear(); render(); showTab('today'); } } }));
+    });
+    root.append(h('div', { class: 'cal__month' }, h('div', { class: 'cal__label' }, mo.label), cells));
+  });
+}
+
+// ================================================================== READING
+
+function bookStats(book) {
+  const dates = Object.keys(S.days).filter(d => (S.days[d].pages[book.t] || 0) !== 0).sort();
+  const total = dates.reduce((s, d) => s + (S.days[d].pages[book.t] || 0), 0);
+  const first = dates[0] || null;
+  const span = first ? Math.max(1, daysBetween(first, todayYMD()) + 1) : 0;
+  const rate = span ? total / span : 0;
+  const remaining = Math.max(0, book.p - total);
+  const finish = (rate > 0 && remaining > 0) ? addDays(todayYMD(), Math.ceil(remaining / rate)) : null;
+  return { total, first, rate, remaining, finish, pct: Math.min(100, total / book.p * 100) };
+}
+function renderReading() {
+  const root = $('#books'), date = view.date, d = getDay(date);
+  root.replaceChildren();
+  let sum = 0;
+  BOOKS.forEach(b => {
+    const s = bookStats(b); sum += Math.min(s.total, b.p);
+    const todayP = d.pages[b.t] || 0;
+    const bump = n => mutate(date, x => { const cur = x.pages[b.t] || 0; const others = s.total - cur; let v = cur + n; v = Math.max(0, Math.min(v, b.p - others)); if (v === 0) delete x.pages[b.t]; else x.pages[b.t] = v; });
+    let proj;
+    if (s.total >= b.p) proj = 'Finished.';
+    else if (!s.first) proj = `${b.p} pp · not started`;
+    else if (s.finish) proj = `${s.rate.toFixed(1)} pp/day · finish ~${fmtShort(s.finish)}${s.finish > endDate() ? ' (after the arc)' : ''}`;
+    else proj = `${s.remaining} pp left`;
+    root.append(h('div', { class: 'book' + (s.total >= b.p ? ' is-done' : '') },
+      h('div', { class: 'book__top' }, h('div', {}, h('div', { class: 'book__t' }, b.t), h('div', { class: 'book__a' }, `${b.a} · ${b.p} pp`)),
+        h('div', { class: 'book__pct num' }, `${Math.floor(s.pct)}`, h('small', {}, '%'))),
+      h('div', { class: 'bar' }, h('i', { style: `width:${s.pct}%` })),
+      h('div', { class: 'book__meta' }, h('div', { class: 'book__proj' }, `${s.total} / ${b.p} · ${proj}`),
+        h('div', { class: 'book__btns' }, h('span', { class: 'today num' }, todayP ? `+${todayP} ${date === todayYMD() ? 'today' : fmtShort(date)}` : ''),
+          h('button', { type: 'button', class: 'btn btn--sm', onclick: () => bump(-10), 'aria-label': `${b.t} minus 10 pages` }, '−10'),
+          h('button', { type: 'button', class: 'btn btn--sm', onclick: () => bump(10), 'aria-label': `${b.t} plus 10 pages` }, '+10'),
+          h('button', { type: 'button', class: 'btn btn--sm', onclick: () => bump(25), 'aria-label': `${b.t} plus 25 pages` }, '+25')))));
+  });
+  $('#read-total').textContent = sum.toLocaleString();
+  $('#read-total-all').textContent = BOOKS.reduce((s, b) => s + b.p, 0).toLocaleString();
+  $('#food-kcal').textContent = `${(isDiet(todayYMD()) ? cfg().kcalBreak : cfg().kcal).toLocaleString()} kcal${isDiet(todayYMD()) ? ' · diet break' : ''}`;
+}
+
+// ================================================================== BOOT
+
+RENDERERS.push(renderLog, renderReading);
 bootCore();
+bindLog();
 render();
 pull(true);
 scheduleFlush(300);
