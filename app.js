@@ -908,15 +908,82 @@ const fighter = () => FIGHTERS[PW.fighter] || FIGHTERS.vegeta;
 const formFor = i => i < 0 || i >= TIERS.length ? null : Object.assign({}, TIERS[i], (fighter().tiers || {})[i] || {});
 const silSVG = (key, cls) => `<svg class="${cls}" viewBox="0 -6 240 306" aria-hidden="true" focusable="false">${SIL[key]}</svg>`;
 
+
+// ---------- fighter art (the user's own images, kept on this device only — IndexedDB, never synced or committed)
+
+const ArtDB = {
+  p: null,
+  open() {
+    if (!this.p) this.p = new Promise((res, rej) => {
+      try { const r = indexedDB.open('arc-art', 1); r.onupgradeneeded = () => r.result.createObjectStore('art'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }
+      catch (e) { rej(e); }
+    });
+    return this.p;
+  },
+  async run(mode, fn) { const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction('art', mode), req = fn(tx.objectStore('art')); tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error); }); },
+  get(k) { return this.run('readonly', st => st.get(k)); },
+  put(k, v) { return this.run('readwrite', st => st.put(v, k)); },
+  del(k) { return this.run('readwrite', st => st.delete(k)); }
+};
+const ART = {};   // fighter -> { url, cut }
+
+async function loadArt() {
+  for (const k of Object.keys(FIGHTERS)) {
+    try { const v = await ArtDB.get(k); if (v && v.blob) ART[k] = { url: URL.createObjectURL(v.blob), cut: !!v.cut }; } catch (e) { /* no IndexedDB: silhouettes stay */ }
+  }
+  applyFighter();
+}
+
+function readImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => { res(img); URL.revokeObjectURL(url); };
+    img.onerror = () => { rej(new Error('That file isn\'t an image this browser can open. Try a PNG or JPEG.')); URL.revokeObjectURL(url); };
+    img.src = url;
+  });
+}
+
+/** Downscale to ≤1400 px, detect a transparent background, store as PNG (cut-out) or JPEG (photo). */
+async function ingestArt(key, file) {
+  const img = await readImage(file);
+  const sc = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * sc)), hgt = Math.max(1, Math.round(img.naturalHeight * sc));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = hgt;
+  const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, w, hgt);
+  let clear = 0, total = 0;
+  try {
+    const d = cx.getImageData(0, 0, w, hgt).data, step = Math.max(1, Math.floor(Math.min(w, hgt) / 60));
+    const probe = (x, y) => { total++; if (d[(y * w + x) * 4 + 3] < 200) clear++; };
+    for (let x = 0; x < w; x += step) { probe(x, 0); probe(x, hgt - 1); }
+    for (let y = 0; y < hgt; y += step) { probe(0, y); probe(w - 1, y); }
+  } catch (e) { /* tainted canvas can't happen for a local file; treat as photo */ }
+  const cut = total > 0 && clear / total > 0.3;
+  const blob = await new Promise(r => cv.toBlob(r, cut ? 'image/png' : 'image/jpeg', 0.9));
+  if (!blob) throw new Error('Could not process that image.');
+  await ArtDB.put(key, { blob, cut, added: new Date().toISOString() });
+  if (ART[key]) URL.revokeObjectURL(ART[key].url);
+  ART[key] = { url: URL.createObjectURL(blob), cut };
+  return cut;
+}
+async function removeArt(key) {
+  try { await ArtDB.del(key); } catch (e) {}
+  if (ART[key]) { URL.revokeObjectURL(ART[key].url); delete ART[key]; }
+}
+const figure = (key, cls) => ART[key]
+  ? `<img class="${cls} pw-art ${ART[key].cut ? 'is-cut' : 'is-boxed'}" src="${ART[key].url}" alt="" draggable="false">`
+  : silSVG(key, cls);
+
 function applyFighter() {
   const f = fighter(), root = $('#view-power');
   root.style.setProperty('--pw-acc', f.c); root.style.setProperty('--pw-acc2', f.c2); root.style.setProperty('--beam', f.beam);
   $('#pw-kanji').textContent = f.kanji;
   const others = Object.keys(FIGHTERS).filter(k => k !== PW.fighter);
-  $('#pw-cast').innerHTML = silSVG(others[0], 'pw-f pw-f--l') + silSVG(others[1], 'pw-f pw-f--r') + silSVG(PW.fighter, 'pw-f pw-f--main');
+  $('#pw-cast').innerHTML = figure(others[0], 'pw-f pw-f--l') + figure(others[1], 'pw-f pw-f--r') + figure(PW.fighter, 'pw-f pw-f--main');
+  $('#pw-art-add').textContent = ART[PW.fighter] ? `Replace ${f.name} art` : `Add ${f.name} art`;
+  $('#pw-art-del').hidden = !ART[PW.fighter];
   $('#pw-roster').innerHTML = Object.keys(FIGHTERS).map(k => { const x = FIGHTERS[k];
     return `<button type="button" class="pw-card" data-f="${k}" aria-pressed="${k === PW.fighter}" style="--c:${x.c}">` +
-      silSVG(k, 'pw-card__art') + `<span class="pw-card__n">${x.name}</span><span class="pw-card__t">${esc(x.title)}</span>` +
+      figure(k, 'pw-card__art') + `<span class="pw-card__n">${x.name}</span><span class="pw-card__t">${esc(x.title)}</span>` +
       `<span class="pw-card__m">${esc(x.move)}</span></button>`; }).join('');
 }
 
@@ -1212,6 +1279,16 @@ function bindPower() {
     toast(`${fighter().name} steps in`);
   });
   $('#pw-ready').addEventListener('click', e => { if (e.target.closest('#pw-fire')) fireBeam(); });
+  $('#pw-art-add').addEventListener('click', () => $('#pw-art-file').click());
+  $('#pw-art-file').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    const st = $('#pw-art-status'); st.textContent = 'Powering up…';
+    try { const cut = await ingestArt(PW.fighter, file); applyFighter(); st.textContent = cut ? 'Cut-out art added.' : 'Art added. Its edges fade into the aura; a transparent PNG blends best.'; }
+    catch (err) { st.textContent = err.message || 'Could not add that image.'; }
+  });
+  $('#pw-art-del').addEventListener('click', async () => { await removeArt(PW.fighter); applyFighter(); $('#pw-art-status').textContent = 'Art removed. Back to the silhouette.'; });
+  loadArt();
   $('#pw-sample').addEventListener('click', () => {
     PW.sample = !PW.sample;
     $('#pw-sample').setAttribute('aria-pressed', PW.sample ? 'true' : 'false');

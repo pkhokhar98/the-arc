@@ -105,6 +105,13 @@
       <section class="pw-panel pw-roster-p">
         <h2 class="pw-h"><b>Choose your fighter</b><span class="pw-jp">戦士</span></h2>
         <div class="pw-roster" id="pw-roster"></div>
+        <div class="pw-artbar">
+          <button type="button" class="pw-artbtn" id="pw-art-add">Add Vegeta art</button>
+          <button type="button" class="pw-artbtn pw-artbtn--ghost" id="pw-art-del" hidden>Remove</button>
+          <input type="file" id="pw-art-file" accept="image/*" hidden>
+          <span class="pw-art-status" id="pw-art-status" role="status" aria-live="polite"></span>
+        </div>
+        <p class="pw-note">Pick any picture of the selected fighter from your phone or computer. It stays on this device only: it is never uploaded, synced, or added to the site. A PNG with a transparent background looks best. Add it once on each device you use.</p>
       </section>
 
       <section class="pw-panel">
