@@ -105,6 +105,65 @@ function cfg() {
     deload: list('deload_weeks', C.DELOAD), diet: list('diet_break_weeks', C.DIET)
   };
 }
+// ------------------------------------------------------------------ wake time + day schedule
+
+const SLEEP_MIN = 450;   // 7.5 h
+const WORK_START = 420, WORK_END = 840;   // meetings open 07:00 PT, client day closes 14:00 PT
+/** Wake time in minutes after midnight: this device's choice, else the sheet's Config wake_time, else 06:00. */
+function parseWake(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number' || /^\d+(\.\d+)?$/.test(String(v))) { const n = Number(v); return n <= 24 ? Math.round(n * 60) : Math.floor(n / 100) * 60 + (n % 100); }
+  const s = String(v), m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  const d = new Date(s);
+  if (!isNaN(d)) { const [hh, mm] = new Intl.DateTimeFormat('en-CA', { timeZone: C.TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d).split(':').map(Number); return hh * 60 + mm; }
+  return null;
+}
+function wakeMin() {
+  const local = lsGet('arc.wake', null);
+  if (typeof local === 'number') return local;
+  return parseWake((S.config || {}).wake_time) ?? 360;
+}
+function bedMin() { return wakeMin() - SLEEP_MIN + 1440; }   // may exceed 1440 = after midnight
+function fmtT(m) { m = ((Math.round(m) % 1440) + 1440) % 1440; return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`; }
+function nowMin() {
+  try { const [hh, mm] = new Intl.DateTimeFormat('en-CA', { timeZone: C.TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()).split(':').map(Number); return hh * 60 + mm; }
+  catch (e) { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+}
+function hhmmToMin(s) { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+
+/** Time slots for every timed item on a date, built from the wake time. Protein and steps run all day, so they have none. */
+function scheduleFor(date) {
+  const W = wakeMin(), B = bedMin(), ses = sessionFor(date);
+  const deep = W + 50 < WORK_START ? [W + 50, WORK_START] : [W + 50, W + 80];
+  const tr = ses.type === 'rest' ? [600, 660] : (() => { const t = hhmmToMin(ses.time) ?? 870; return [t, t + 75]; })();
+  return [
+    { key: 'sleep', t: W, end: W + 5 },
+    { key: 'morning_window', t: W, end: W + 20 },
+    { key: 'gargle', t: W + 20, end: W + 25 },
+    { key: 'breakfast', t: W + 25, end: W + 45 },
+    { key: 'am_stack', t: W + 30, end: W + 45 },
+    { key: 'trataka', t: W + 45, end: W + 50 },
+    { key: 'deep_work', t: deep[0], end: deep[1] },
+    { key: 'walk', t: 720, end: 740 },
+    { key: 'close_client', t: WORK_END, end: WORK_END + 10 },
+    { key: 'train', t: tr[0], end: tr[1] },
+    { key: 'decompress', t: 990, end: 1080 },
+    { key: 'read', t: B - 75, end: B - 50 },
+    { key: 'night_close', t: B - 45, end: B - 40 },
+    { key: 'pm_stack', t: B - 40, end: B - 35 },
+    { key: 'rinse', t: B - 35, end: B - 30 },
+    { key: 'sats', t: B - 20, end: B }
+  ].sort((a, b) => a.t - b.t || a.end - b.end);
+}
+function groupNote(g) {
+  const W = wakeMin(), B = bedMin();
+  if (g.group === 'Morning') return fmtT(W + 25);
+  if (g.group === 'Evening') return `from ${fmtT(B - 75)}`;
+  if (g.group === 'Pre-sleep') return `${fmtT(B - 20)} · asleep by ${fmtT(B)}`;
+  return g.note;
+}
+
 function dayNumber(date) { return daysBetween(cfg().start, date) + 1; }
 function weekOf(date) { return Math.ceil(dayNumber(date) / 7); }
 function endDate() { const k = cfg(); return addDays(k.start, k.total - 1); }
@@ -125,6 +184,7 @@ function itemsFor(date) {
       r.sub = diet ? `${k.kcalBreak.toLocaleString()} kcal maintenance · diet break · protein unchanged` : `${k.kcal.toLocaleString()} kcal · ${k.protein} P / 80 F / 255 C`;
     }
     if (it.key === 'steps') r.title = `${k.steps.toLocaleString()} steps`;
+    if (it.key === 'deep_work') r.sub = wakeMin() + 50 < WORK_START ? `${fmtT(wakeMin() + 50)}–07:00 · before meetings open` : 'no room before 07:00 today · take the first gap after a call';
     if (it.key === 'sleep') r.title = `${k.sleep} hours minimum`;
     if (it.key === 'train') {
       r.title = ses.name;
@@ -412,7 +472,7 @@ function renderChecklist() {
     const its = items.filter(i => i.group === g.group);
     const reqN = its.filter(i => i.req).length, doneN = its.filter(i => i.req && d.checks[i.key]).length;
     const sec = h('section', { class: 'group' },
-      h('div', { class: 'group__h' }, h('span', { class: 'label' }, g.group), h('span', { class: 'label label--dim' }, g.note || (reqN ? `${doneN}/${reqN}` : ''))));
+      h('div', { class: 'group__h' }, h('span', { class: 'label' }, g.group), h('span', { class: 'label label--dim' }, groupNote(g) || (reqN ? `${doneN}/${reqN}` : ''))));
     its.forEach(it => {
       const done = !!d.checks[it.key], open = view.open.has(it.key), detail = detailFor(it, date);
       const row = h('div', { class: 'row' + (done ? ' is-done' : '') + (open ? ' is-open' : ''), 'data-key': it.key });
@@ -431,9 +491,58 @@ function renderChecklist() {
   });
 }
 
+
+// ------------------------------------------------------------------ next up
+
+function nextUp(date) {
+  const d = getDay(date), items = itemsFor(date), now = nowMin();
+  const label = key => (items.find(i => i.key === key) || {}).title || key;
+  const req = key => !!(items.find(i => i.key === key) || {}).req;
+  const open = scheduleFor(date).filter(s => !d.checks[s.key]);
+  const cur = open.find(s => now >= s.t && now < s.end);
+  const nxt = open.find(s => s.t >= now && s !== cur);
+  const late = open.filter(s => s.end <= now && req(s.key) && s !== cur);
+  return { cur, nxt, late, label, allDone: !open.length };
+}
+function renderNext() {
+  const box = $('#next'); if (!box) return;
+  const today = todayYMD(), live = view.date === today && dayNumber(today) >= 0;
+  box.hidden = !live;
+  const sel = $('#in-wake');
+  if (!sel.options.length) for (let m = 270; m <= 540; m += 15) sel.append(h('option', { value: m }, fmtT(m)));
+  sel.value = String(wakeMin());
+  if (!live) return;
+  if (dayNumber(today) < 1) {
+    $('#next-k').textContent = 'Tonight'; $('#next-t').textContent = fmtT(bedMin() - 20);
+    $('#next-what').textContent = `Day 1 tomorrow · asleep by ${fmtT(bedMin())}`; $('#next-late').textContent = ''; box.dataset.key = ''; box.classList.remove('is-now'); return;
+  }
+  const n = nextUp(today);
+  if (n.allDone) { $('#next-k').textContent = 'Done'; $('#next-t').textContent = ''; $('#next-what').textContent = 'Every timed anchor is in. Lights out by ' + fmtT(bedMin()) + '.'; box.dataset.key = ''; }
+  else if (n.cur) { $('#next-k').textContent = 'Now'; $('#next-t').textContent = `until ${fmtT(n.cur.end)}`; $('#next-what').textContent = n.label(n.cur.key); box.dataset.key = n.cur.key; }
+  else if (n.nxt) { $('#next-k').textContent = 'Next up'; $('#next-t').textContent = fmtT(n.nxt.t); $('#next-what').textContent = n.label(n.nxt.key); box.dataset.key = n.nxt.key; }
+  else { $('#next-k').textContent = 'Tonight'; $('#next-t').textContent = ''; $('#next-what').textContent = 'Close out what is left, asleep by ' + fmtT(bedMin()) + '.'; box.dataset.key = ''; }
+  const names = n.late.slice(0, 3).map(s => ANCHOR_LABEL[s.key] || n.label(s.key)).join(' · ');
+  $('#next-late').textContent = n.late.length ? `Still open: ${names}${n.late.length > 3 ? ` +${n.late.length - 3}` : ''}` : '';
+  box.classList.toggle('is-now', !!n.cur);
+}
+function bindNext() {
+  $('#in-wake').addEventListener('change', e => {
+    const m = Number(e.target.value); lsSet('arc.wake', m);
+    if (apiUrl()) apiFetch('POST', { action: 'config', config: { wake_time: Math.floor(m / 60) * 100 + (m % 60) } }).catch(() => {});
+    render(); toast(`Wake ${fmtT(m)} · asleep by ${fmtT(bedMin())}`);
+  });
+  $('#next-main').addEventListener('click', () => {
+    const key = $('#next').dataset.key; if (!key) return;
+    const row = document.querySelector(`.row[data-key="${key}"]`); if (!row) return;
+    row.scrollIntoView({ behavior: REDUCE ? 'auto' : 'smooth', block: 'center' });
+    row.classList.remove('is-flash'); void row.offsetWidth; row.classList.add('is-flash');
+  });
+  setInterval(() => { if (view.tab === 'today' && !document.hidden) renderNext(); }, 30000);
+}
+
 // ------------------------------------------------------------------ render registry + boot
 
-const RENDERERS = [renderToday];
+const RENDERERS = [renderToday, renderNext];
 function render() { RENDERERS.forEach(fn => { try { fn(); } catch (e) { console.error(fn.name, e); } }); renderSync(); }
 
 function showTab(name) {
@@ -976,6 +1085,7 @@ function applyFighter() {
   const f = fighter(), root = $('#view-power');
   root.style.setProperty('--pw-acc', f.c); root.style.setProperty('--pw-acc2', f.c2); root.style.setProperty('--beam', f.beam);
   $('#pw-kanji').textContent = f.kanji;
+  if (typeof renderCoach === 'function' && $('#coach')) renderCoach();
   const others = Object.keys(FIGHTERS).filter(k => k !== PW.fighter);
   $('#pw-cast').innerHTML = figure(others[0], 'pw-f pw-f--l') + figure(others[1], 'pw-f pw-f--r') + figure(PW.fighter, 'pw-f pw-f--main');
   $('#pw-art-add').textContent = ART[PW.fighter] ? `Replace ${f.name} art` : `Add ${f.name} art`;
@@ -1415,12 +1525,128 @@ function bindPower() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) { Aura.stop(); Fx.stop(); } else { Fx.start(); if (view.tab === 'power') Aura.start(); } });
 }
 
+// ---------- coach: your fighter, bottom right, one lock-in a day
+
+// Public-domain lines only (Long 1862/1890, Gummere 1917, Franklin, Durant 1926).
+const QUOTES = [
+  { t: 'start', q: 'In the morning when thou risest unwillingly, let this thought be present: I am rising to the work of a human being.', by: 'Marcus Aurelius, Meditations V.1' },
+  { t: 'start', q: 'Begin at once to live, and count each separate day as a separate life.', by: 'Seneca, Letters CI' },
+  { t: 'start', q: 'First say to yourself what you would be; and then do what you have to do.', by: 'Epictetus, Discourses III.23' },
+  { t: 'sleep', q: 'Early to bed and early to rise, makes a man healthy, wealthy, and wise.', by: 'Benjamin Franklin, Poor Richard’s Almanack' },
+  { t: 'sleep', q: 'Lost time is never found again.', by: 'Benjamin Franklin, Poor Richard’s Almanack' },
+  { t: 'mind', q: 'Nowhere either with more quiet or more freedom from trouble does a man retire than into his own soul.', by: 'Marcus Aurelius, Meditations IV.3' },
+  { t: 'mind', q: 'Confine thyself to the present.', by: 'Marcus Aurelius, Meditations VII.29' },
+  { t: 'mind', q: 'We suffer more often in imagination than in reality.', by: 'Seneca, Letters XIII' },
+  { t: 'mind', q: 'Such as are thy habitual thoughts, such also will be the character of thy mind; for the soul is dyed by the thoughts.', by: 'Marcus Aurelius, Meditations V.16' },
+  { t: 'food', q: 'Eat to live, and not live to eat.', by: 'Benjamin Franklin, Poor Richard’s Almanack' },
+  { t: 'food', q: 'Very little indeed is necessary for living a happy life.', by: 'Marcus Aurelius, Meditations VII.67' },
+  { t: 'train', q: 'It is difficulties which show what men are.', by: 'Epictetus, Discourses I.24' },
+  { t: 'train', q: 'Do every act of thy life as if it were the last.', by: 'Marcus Aurelius, Meditations II.5' },
+  { t: 'read', q: 'If you would be a good reader, read; if a writer, write.', by: 'Epictetus, Discourses II.18' },
+  { t: 'discipline', q: 'We are what we repeatedly do. Excellence, then, is not an act, but a habit.', by: 'Will Durant, The Story of Philosophy' },
+  { t: 'discipline', q: 'No longer talk at all about the kind of man that a good man ought to be, but be such.', by: 'Marcus Aurelius, Meditations X.16' },
+  { t: 'discipline', q: 'While we are postponing, life speeds by.', by: 'Seneca, Letters I' },
+  { t: 'rest', q: 'Very little indeed is necessary for living a happy life.', by: 'Marcus Aurelius, Meditations VII.67' },
+  { t: 'review', q: 'Confine thyself to the present.', by: 'Marcus Aurelius, Meditations VII.29' }
+];
+// Original lines written in each fighter's voice. {x} is today's lock-in, lowercased.
+const VOICE = {
+  vegeta: ['Hmph. {X}. Even a third-class warrior could manage that much.', 'A prince of all Saiyans doesn\'t skip {x}. Neither do you.',
+           'Your power level is watching. Don\'t embarrass me over {x}.', 'Get {x} done and maybe I\'ll stop calling you Kakarot.', 'Pride is earned in the boring reps. Today that\'s {x}.'],
+  gohan:  ['Study first, fight second. Today that means {x}.', 'You\'re stronger than you think. Just do {x} and see.',
+           'My mom would make me do {x} before anything else. She\'d be right.', 'Piccolo trained me to finish the basics first. {X}, then the rest.', 'Lock in on {x}. Calm mind, full power.'],
+  trunks: ['Where I\'m from, the ones who skipped {x} didn\'t make it. Don\'t skip it.', 'I came back from the future for one reason: {x}.',
+           'Sword\'s sharp, plan\'s simple. {X}.', 'In my timeline nobody had a streak like yours. Protect it: {x}.', 'Mom built a time machine. You can manage {x}.']
+};
+const ANCHOR_X = { sleep: 'sleep', morning_window: 'the morning window', protein: 'your protein', steps: 'your steps', train: 'training', decompress: 'the decompression',
+  read: 'your reading', night_close: 'the night close', rinse: 'the Pulmicort rinse', sats: 'SATS' };
+const TOPIC = { sleep: 'sleep', morning_window: 'mind', sats: 'mind', decompress: 'mind', protein: 'food', breakfast: 'food', steps: 'train', walk: 'train',
+  train: 'train', read: 'read', night_close: 'discipline', rinse: 'discipline' };
+
+function dayIndex(date) { return Math.floor(parseYMD(date).getTime() / 86400000); }
+
+/** Today's single focus, chosen from the data: slipped anchor, weakest anchor, sleep, pace, session, streak. */
+function coachFocus(today) {
+  const k = cfg(), dn = dayNumber(today), ses = sessionFor(today), B = bedMin(), W = wakeMin();
+  const prev = addDays(today, -1);
+  if (dn < 1) return { lock: 'Day 1 starts tomorrow', why: `Alarm at ${fmtT(W)}. Asleep by ${fmtT(B)} tonight so the sleep anchor counts from the first morning.`, t: 'start', x: 'an early night' };
+  if (ses.type === 'rest') return { lock: 'Weekly review', why: 'Read the week in the Log tab, write one line for next week, then Sunday prep: two chickens, six sweet potatoes, a dozen eggs, a kilo of turkey.', t: 'review', x: 'the weekly review' };
+  const reqPrev = dayNumber(prev) >= 1 ? itemsFor(prev).filter(i => i.req) : [];
+  const pd = S.days[prev];
+  if (pd && reqPrev.length) {
+    const miss = reqPrev.find(i => !pd.checks[i.key]);
+    if (miss) { const slot = scheduleFor(today).find(s => s.key === miss.key); return { lock: ANCHOR_LABEL[miss.key] || miss.title, why: `It slipped yesterday${slot ? `. Today it's at ${fmtT(slot.t)}` : ''}. One anchor is the difference between a clean day and a partial one.`, t: TOPIC[miss.key] || 'discipline', x: ANCHOR_X[miss.key] }; }
+  }
+  const from = addDays(today, -14) > k.start ? addDays(today, -14) : k.start, win = from <= prev ? arcDates(from, prev) : [];
+  if (win.length >= 4) {
+    const rows = itemsFor(today).filter(i => i.req).map(i => ({ i, p: win.filter(d => S.days[d] && S.days[d].checks[i.key]).length / win.length })).sort((a, b) => a.p - b.p);
+    if (rows[0].p < 0.8) return { lock: ANCHOR_LABEL[rows[0].i.key] || rows[0].i.title, why: `${Math.round(rows[0].p * 100)}% over the last 14 days. It's the anchor holding the streak back.`, t: TOPIC[rows[0].i.key] || 'discipline', x: ANCHOR_X[rows[0].i.key] };
+  }
+  const sa = sleepAvg7(today);
+  if (sa !== null && sa < 7) return { lock: 'Sleep', why: `7-day average is ${sa.toFixed(1)} h. Asleep by ${fmtT(B)} tonight; SATS starts ${fmtT(B - 20)}.`, t: 'sleep', x: 'sleep' };
+  const ri = rateInfo();
+  if (ri && ri.cls === 'bad') return { lock: 'Eat to the number', why: `Losing ${ri.pct.toFixed(1)}% a week. Faster than 1% costs muscle. Hit ${(isDiet(today) ? k.kcalBreak : k.kcal).toLocaleString()} kcal and ${k.protein} g protein.`, t: 'food', x: 'eating to the number' };
+  if (isDiet(today)) return { lock: 'Maintenance calories', why: `Diet break: ${k.kcalBreak.toLocaleString()} kcal this week. Protein stays at ${k.protein} g.`, t: 'food', x: 'eating at maintenance' };
+  if (ses.type === 'lift') {
+    const hist = Object.keys(S.days).filter(d => d < today && S.days[d].lifts && S.days[d].lifts[ses.main]).sort();
+    const last = hist.length ? S.days[hist[hist.length - 1]].lifts[ses.main] : null;
+    if (isDeload(today)) return { lock: `${ses.name}, deload`, why: 'Same loads, half the sets. Leave the gym wanting more.', t: 'rest', x: 'the deload' };
+    return { lock: `${ses.main} top set`, why: last ? `Last time ${last.weight} × ${last.reps} (est. 1RM ${Math.round(epley(last.weight, last.reps))}). Beat it by one rep.` : `${ses.name} at ${ses.time}. Log the top set after.`, t: 'train', x: `the ${ses.main.toLowerCase()} top set` };
+  }
+  if (ses.type === 'run') return { lock: ses.name, why: `${ses.sub}. Conversational pace; the work is showing up.`, t: 'train', x: `the ${ses.name.toLowerCase()}` };
+  const st = powerReport(today).streak;
+  return { lock: 'Keep the streak', why: st ? `${st} clean day${st === 1 ? '' : 's'} in a row. Ten anchors, no exceptions.` : 'Ten anchors today. Start a streak.', t: 'discipline', x: 'the streak' };
+}
+function coachMessage(today) {
+  const f = fighter(), key = PW.fighter in VOICE ? PW.fighter : 'vegeta', idx = dayIndex(today);
+  const focus = coachFocus(today);
+  const pool = QUOTES.filter(q => q.t === focus.t), qt = (pool.length ? pool : QUOTES)[idx % (pool.length || QUOTES.length)];
+  const lines = VOICE[key], x = focus.x || focus.lock.toLowerCase(), X = x.charAt(0).toUpperCase() + x.slice(1);
+  const line = lines[idx % lines.length].replace('{x}', x).replace('{X}', X);
+  return { f, focus, qt, line };
+}
+
+const faceHTML = key => ART[key]
+  ? `<img src="${ART[key].url}" alt="" class="coach__img ${ART[key].cut ? 'is-cut' : ''}" draggable="false">`
+  : `<svg viewBox="50 -8 140 150" aria-hidden="true">${SIL[key]}</svg>`;
+
+function renderCoach() {
+  const el = $('#coach'); if (!el) return;
+  const today = todayYMD(), m = coachMessage(today), seen = lsGet('arc.coach', '') === today;
+  el.style.setProperty('--c', m.f.c);
+  $('#coach-face').innerHTML = faceHTML(PW.fighter) + (seen ? '' : '<span class="coach__dot" aria-hidden="true">!</span>');
+  $('#coach-face').setAttribute('aria-label', `${m.f.name}'s message for today${seen ? '' : ', new'}`);
+  $('#coach-who').textContent = m.f.name;
+  $('#coach-day').textContent = dayNumber(today) >= 1 ? `Day ${pad(dayNumber(today), 3)}` : 'Day 0';
+  $('#coach-lock').textContent = m.focus.lock;
+  $('#coach-why').textContent = m.focus.why;
+  $('#coach-q').textContent = '“' + m.qt.q + '”';
+  $('#coach-by').textContent = m.qt.by;
+  $('#coach-line').textContent = m.line;
+  $('#coach-foot').textContent = `Wake ${fmtT(wakeMin())} · asleep by ${fmtT(bedMin())}`;
+}
+function coachOpen(open) {
+  const el = $('#coach'); el.classList.toggle('is-open', open);
+  $('#coach-face').setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) { lsSet('arc.coach', todayYMD()); renderCoach(); }
+}
+function bindCoach() {
+  $('#coach-face').addEventListener('click', () => coachOpen(!$('#coach').classList.contains('is-open')));
+  $('#coach-ok').addEventListener('click', () => coachOpen(false));
+  $('#coach-x').addEventListener('click', () => coachOpen(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') coachOpen(false); });
+  renderCoach();
+  if (lsGet('arc.coach', '') !== todayYMD()) setTimeout(() => coachOpen(true), 1400);
+}
+
 // ================================================================== BOOT
 
-RENDERERS.push(renderLog, renderReading, renderPower);
+RENDERERS.push(renderLog, renderReading, renderPower, renderCoach);
 bootCore();
 bindLog();
+bindNext();
 bindPower();
+bindCoach();
 if (location.hash === '#power') showTab('power');
 render();
 pull(true);

@@ -79,6 +79,24 @@ Every tab uses the same treatment: translucent panels over the painting, title-c
 
 The aura, the background pan, grain and particles respect reduced motion: with it on, everything renders once and stays still.
 
+## Wake time, Next up, and the coach
+
+**Wake time** drives the day. Set it from the **Wake** picker on Today (this device), or as `wake_time` in the sheet's
+Config tab as HHMM (`700` = 07:00), which every device falls back to. The morning items run from wake
+(window, gargle, breakfast at +25 min, trataka, deep work until meetings open at 07:00), and the evening runs
+back from bedtime = wake − 7.5 h (reading, night close, rinse, SATS 20 min before lights out). The group
+headers show the resulting times.
+
+**Next up** on Today shows what is due now (or next), when, and any earlier required anchors still open.
+Tap it to jump to that row.
+
+**The coach** is your chosen fighter in the bottom-right corner, on every tab. Once a day it opens a speech bubble
+with one thing to lock in on, chosen from your data in this order: an anchor that slipped yesterday, your
+weakest anchor over 14 days (under 80 %), a short 7-day sleep average, losing weight too fast, a diet-break week,
+today's lift (with your last top set to beat) or run, otherwise the streak. It adds a public-domain quote that fits
+(Marcus Aurelius, Seneca, Epictetus, Franklin, Durant) and an original line in the fighter's voice.
+Tap the portrait any time to reopen it. If you've added fighter art, the coach uses it.
+
 ## How the data flows
 
 * Every tap writes to local state (`localStorage`) and re-renders at once. Nothing waits on the network.

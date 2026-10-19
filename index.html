@@ -61,6 +61,10 @@
       <div class="metric"><div class="metric__v num" id="m-streak">0</div><div class="metric__k">streak</div></div>
       <div class="metric"><div class="metric__v num" id="m-clean">0</div><div class="metric__k">clean</div></div>
     </section>
+    <div class="next" id="next">
+      <button type="button" class="next__main" id="next-main"><span class="next__k" id="next-k">Next up</span><span class="next__t" id="next-t">—</span><span class="next__what" id="next-what"></span><span class="next__late" id="next-late"></span></button>
+      <label class="next__wake"><span class="next__wk">Wake</span><select id="in-wake" aria-label="Wake time"></select></label>
+    </div>
     </section>
 
     <section id="checklist" aria-label="Daily protocol"></section>
@@ -290,6 +294,19 @@
     <button type="button" class="tab" data-view="read">Read</button>
   </div>
 </nav>
+<aside class="coach" id="coach" aria-label="Daily coach">
+  <div class="coach__bubble" id="coach-bubble" role="dialog" aria-labelledby="coach-who">
+    <button type="button" class="coach__x" id="coach-x" aria-label="Close">×</button>
+    <div class="coach__head"><span class="coach__who" id="coach-who">Vegeta</span><span class="coach__day" id="coach-day">Day 000</span></div>
+    <div class="coach__k">Lock in</div>
+    <div class="coach__lock" id="coach-lock"></div>
+    <p class="coach__why" id="coach-why"></p>
+    <blockquote class="coach__q"><span id="coach-q"></span><cite id="coach-by"></cite></blockquote>
+    <p class="coach__line" id="coach-line"></p>
+    <div class="coach__foot"><span id="coach-foot"></span><button type="button" class="coach__ok" id="coach-ok">Got it</button></div>
+  </div>
+  <button type="button" class="coach__face" id="coach-face" aria-expanded="false" aria-controls="coach-bubble"></button>
+</aside>
 <div class="saga-card" id="saga-card" aria-hidden="true"><div class="saga-card__lines"></div><div class="saga-card__in"><div class="saga-card__jp pw-jp" id="saga-card-jp"></div><div class="saga-card__name" id="saga-card-name"></div><div class="saga-card__sub" id="saga-card-sub"></div></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
