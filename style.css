@@ -668,5 +668,15 @@ body.on-power .tab.is-active::after { background: var(--pw-gi); width: 32px; hei
 /* ---------- battle sky ---------- */
 .pw-sky { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; display: none; }
 body.on-power .pw-sky { display: block; }
-body.on-power .pw-panel { background: linear-gradient(180deg, rgba(20, 28, 74, .5), rgba(8, 11, 32, .72)); }
+body.on-power .pw-panel { background: linear-gradient(180deg, rgba(14, 24, 66, var(--pa1, .6)), rgba(8, 12, 34, var(--pa2, .8))); }
+body.on-power[data-sky="day"] { --pa1: .8; --pa2: .9; background: #5FA6EE; }
+body.on-power[data-sky="dusk"] { --pa1: .7; --pa2: .84; background: #6B4479; }
+body.on-power[data-sky="night"] { --pa1: .6; --pa2: .8; background: #101C48; }
+body.on-power[data-sky="day"] .pw-hero { background: radial-gradient(75% 55% at 50% 100%, color-mix(in srgb, var(--aura) 30%, transparent), transparent 72%), linear-gradient(180deg, rgba(12, 20, 64, .9), rgba(7, 10, 24, .95) 85%); }
+body.on-power[data-sky="day"] .pw-brand { color: #0D1B3A; text-shadow: 0 1px 0 rgba(255,255,255,.6); }
+body.on-power[data-sky="day"] .pw-sample { background: rgba(8, 14, 40, .78); color: #DDE6FF; border-color: rgba(255,255,255,.25); }
+body.on-power[data-sky="day"] .pw-sample[aria-pressed="true"] { color: var(--pw-scouter); border-color: var(--pw-scouter); }
+.pw-top__btns { display: flex; gap: 8px; flex: none; }
+.pw-skybtn { text-transform: none; letter-spacing: .06em; }
+@media (max-width: 480px) { .pw-brand__t { display: none; } }
 body.on-power .pw-hero { background: radial-gradient(75% 55% at 50% 100%, color-mix(in srgb, var(--aura) 30%, transparent), transparent 72%), linear-gradient(180deg, rgba(12, 20, 64, .55), rgba(7, 10, 24, .82) 85%); }
