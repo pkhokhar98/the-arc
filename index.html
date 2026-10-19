@@ -19,11 +19,12 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas class="pw-sky" id="pw-sky" aria-hidden="true"></canvas>
+<div class="bg" id="bg" aria-hidden="true"><div class="bg__img" id="bg-a"></div><div class="bg__img" id="bg-b"></div><canvas class="bg__fx" id="bg-fx"></canvas><div class="bg__scrim"></div><div class="bg__grain"></div></div>
 <div class="app">
 
   <!-- ================= TODAY ================= -->
   <main id="view-today" class="view is-active" aria-label="Today">
+<section class="dz dz--head">
     <header class="head">
       <div class="head__left">
         <div class="daynum num" id="daynum">000</div>
@@ -60,6 +61,7 @@
       <div class="metric"><div class="metric__v num" id="m-streak">0</div><div class="metric__k">streak</div></div>
       <div class="metric"><div class="metric__v num" id="m-clean">0</div><div class="metric__k">clean</div></div>
     </section>
+    </section>
 
     <section id="checklist" aria-label="Daily protocol"></section>
 
@@ -70,12 +72,15 @@
   <!-- ================= POWER ================= -->
   <main id="view-power" class="view pw" aria-label="Power">
     <div class="pw-top">
-      <div class="pw-brand"><span class="pw-brand__k pw-jp" id="pw-kanji" aria-hidden="true">王</span><span class="pw-brand__t">West City · training arc</span></div>
+      <div class="pw-brand"><span class="pw-brand__k pw-jp" id="pw-kanji" aria-hidden="true">王</span><span class="pw-brand__t" id="pw-brand-t">Training arc</span></div>
       <div class="pw-top__btns">
-        <button type="button" class="pw-sample pw-skybtn" id="pw-skybtn">Sky · auto</button>
         <button type="button" class="pw-sample" id="pw-sample" aria-pressed="false">Sample data</button>
       </div>
     </div>
+    <section class="saga" aria-label="Saga">
+      <div class="saga__h"><span class="saga__k">Saga</span><span class="saga__name" id="saga-name">West City</span><span class="saga__jp pw-jp" id="saga-jp">西の都</span></div>
+      <div class="saga__row" id="saga-row" role="radiogroup" aria-label="Choose a saga"></div>
+    </section>
     <div class="pw-ribbon" id="pw-ribbon" hidden>Sample · a made-up 72-day run, not your numbers</div>
 
     <div class="pw-grid">
@@ -163,6 +168,7 @@
 
   <!-- ================= LOG ================= -->
   <main id="view-log" class="view" aria-label="Log">
+    <section class="dz">
     <h2 class="label">Log · <span id="log-date">today</span></h2>
     <div class="fields">
       <label class="field"><span class="label">Weight lb</span><input type="number" inputmode="decimal" step="0.1" min="100" max="400" id="in-weight" placeholder="—"></label>
@@ -184,15 +190,21 @@
     <h2 class="label">Notes</h2>
     <textarea id="in-notes" placeholder="One line is enough."></textarea>
     <div class="btnrow"><button type="button" class="btn btn--primary" id="log-save">Save</button><span class="status" id="log-status"></span></div>
+    </section>
 
+    <section class="dz">
     <h2 class="label">Weight</h2>
     <div class="chart" id="chart"></div>
     <div class="legend"><span>Actual</span><span class="l-corr">0.5–1.0 % / wk corridor</span><span class="l-goal">192 lb goal</span></div>
     <p class="projection" id="projection"></p>
+    </section>
 
+    <section class="dz">
     <h2 class="label">Main lifts · est. 1RM</h2>
     <table class="table" id="lifts-table"></table>
+    </section>
 
+    <section class="dz">
     <h2 class="label">The arc</h2>
     <div class="cal" id="cal"></div>
     <div class="cal__key">
@@ -203,7 +215,9 @@
       <span><i style="box-shadow:inset 0 0 0 1px var(--fog)"></i>diet break</span>
       <span><i style="outline:1.5px solid var(--brass);outline-offset:1px"></i>today</span>
     </div>
+    </section>
 
+    <section class="dz dz--quiet">
     <details class="panel" id="settings">
       <summary><span class="label">Sync</span><span class="label label--dim" id="settings-state"></span></summary>
       <div class="panel__body">
@@ -213,16 +227,20 @@
         <p><button type="button" class="btn btn--sm" id="export-json">Export local JSON</button></p>
       </div>
     </details>
+    </section>
   </main>
 
   <!-- ================= FOOD ================= -->
   <main id="view-food" class="view" aria-label="Food">
+    <section class="dz">
     <div class="food-target">
       <div class="label">Target</div>
       <div class="big num" id="food-kcal">2,550 kcal</div>
       <div class="macros num">210 P · 80 F · 255 C · no rice anywhere, sweet potato carries the carbs</div>
     </div>
+    </section>
 
+    <section class="dz">
     <h2 class="label">Meals</h2>
     <div class="meal"><div class="meal__n">Breakfast, every day</div><div class="meal__k"><b>~680 kcal</b>55 P</div><div class="meal__d">100 g oats in water, 1 scoop whey stirred in after, 3 whole eggs, 1 tbsp ground flaxseed, frozen berries.</div></div>
     <div class="meal"><div class="meal__n">Lunch A</div><div class="meal__k"><b>~660 kcal</b>58 P</div><div class="meal__d">200 g chicken, 1 medium sweet potato, frozen broccoli and peppers, olive oil, lemon, chili.</div></div>
@@ -231,10 +249,14 @@
     <div class="meal"><div class="meal__n">Dinner B</div><div class="meal__k"><b>~500 kcal</b>50 P</div><div class="meal__d">200 g chicken, large salad, sautéed frozen spinach.</div></div>
     <div class="meal"><div class="meal__n">Snacks, two a day</div><div class="meal__k"><b>~250 kcal</b>~25 P each</div><div class="meal__d">Cottage cheese · two boiled eggs · apple with 2 tbsp peanut butter · banana post-training.</div></div>
     <div class="meal"><div class="meal__n noth">Not in the house</div><div class="meal__d">Vector cereal, oat bites, rice krispy squares, fibre bars.</div></div>
+    </section>
 
+    <section class="dz">
     <h2 class="label">Sunday prep · ~90 min</h2>
     <p class="prose">Roast <b>2 whole chickens</b> at 375 °F for 90 min and strip them. Roast <b>6 sweet potatoes</b> alongside. Hard boil <b>a dozen eggs</b>. Brown <b>1 kg turkey</b> with taco seasoning.</p>
+    </section>
 
+    <section class="dz">
     <h2 class="label">Weekly shop · ~$165–180 CAD</h2>
     <ul class="shop">
       <li>2 whole chickens</li><li>1 kg lean ground turkey</li><li>3 dozen eggs</li><li>2 tubs cottage cheese</li>
@@ -245,13 +267,16 @@
       <li>Ground flaxseed</li><li>Peanut butter</li><li>Salsa</li><li>Taco seasoning</li><li>Olive oil</li>
       <li>Chili flakes</li><li>Vinegar</li>
     </ul>
+    </section>
   </main>
 
   <!-- ================= READING ================= -->
   <main id="view-read" class="view" aria-label="Reading">
+    <section class="dz">
     <h2 class="label">Reading · <span id="read-total">0</span> of <span id="read-total-all">1,472</span> pages</h2>
     <div id="books"></div>
     <p class="prose">Five books over 180 days. Log pages per day; the projection uses your average pages per day since the first log for that book.</p>
+    </section>
   </main>
 
 </div>
@@ -265,6 +290,7 @@
     <button type="button" class="tab" data-view="read">Read</button>
   </div>
 </nav>
+<div class="saga-card" id="saga-card" aria-hidden="true"><div class="saga-card__lines"></div><div class="saga-card__in"><div class="saga-card__jp pw-jp" id="saga-card-jp"></div><div class="saga-card__name" id="saga-card-name"></div><div class="saga-card__sub" id="saga-card-sub"></div></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="app.js"></script>

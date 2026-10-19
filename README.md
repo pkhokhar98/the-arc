@@ -73,9 +73,11 @@ each main lift ×5. Every page read +2. Every lb lost +500. Each drink −100.
 **Sample data** in the top-right swaps in a made-up 72-day run so you can see every panel filled in.
 It is generated in memory, never saved and never synced; a striped banner shows while it is on.
 
-Behind the whole tab is **West City**, painted in the show's flat cel style: dome buildings with round windows and blue trim, a big Capsule Corp-style headquarters dome (no logo), two-tone cumulus clouds, hover cars, the odd airship and the occasional ki blast. It follows Vancouver time (day 8–17, sunset 17–20 and 6–8, night otherwise) and the **Sky** button cycles auto, day, sunset and night. It only animates while the Power tab is open and visible.
+**Sagas.** The whole app sits on a painted saga background, switched from the strip at the top of the Power tab: West City, Frieza Saga, Cell Saga, Buu Saga, Beerus Saga, Tournament of Power. Switching plays an episode-style title card. The paintings are original images generated in the style of 1990s TV-anime background art (no characters, logos or show assets), stored in `sagas/` as WebP; only the selected one loads. Each saga brings its own accent colours and ambient particles (cloud wisps, green motes, desert dust, pink smoke, gold sparkles, floating crystals), and the painting slowly pans like an anime background shot, with film grain on top. Your pick is remembered per device.
 
-The aura and the sky respect reduced motion: with it on, both render once and stay still.
+Every tab uses the same treatment: translucent panels over the painting, title-card headings, scouter numerals, and ticked anchors and clean calendar days drawn as Dragon Balls.
+
+The aura, the background pan, grain and particles respect reduced motion: with it on, everything renders once and stays still.
 
 ## How the data flows
 
