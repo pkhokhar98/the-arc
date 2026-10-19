@@ -146,15 +146,16 @@ function lsGet(k, f) { try { const v = localStorage.getItem(k); return v === nul
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode / full */ } }
 
 function blankDay(date) {
-  return { date, sleep_hours: null, weight_lb: null, steps: null, nicotine: false, alcohol_drinks: 0, notes: '', checks: {}, lifts: {}, pages: {}, updated_at: '' };
+  return { date, sleep_hours: null, weight_lb: null, steps: null, alcohol_drinks: 0, notes: '', checks: {}, lifts: {}, pages: {}, updated_at: '' };
 }
 function getDay(date) { return S.days[date] || blankDay(date); }
 function normalizeDay(d) {
   const b = blankDay(d.date);
   const num = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
+  d = Object.assign({}, d); delete d.nicotine;
   return Object.assign(b, d, {
     sleep_hours: num(d.sleep_hours), weight_lb: num(d.weight_lb), steps: num(d.steps),
-    nicotine: !!d.nicotine, alcohol_drinks: num(d.alcohol_drinks) || 0, notes: d.notes || '',
+    alcohol_drinks: num(d.alcohol_drinks) || 0, notes: d.notes || '',
     checks: d.checks || {}, lifts: d.lifts || {}, pages: d.pages || {}, updated_at: d.updated_at || ''
   });
 }
@@ -186,7 +187,7 @@ function toPayload(date) {
   return {
     date, sleep_hours: d.sleep_hours ?? '', weight_lb: d.weight_lb ?? '', steps: d.steps ?? '',
     session: ses.name, trained: !!d.checks.train && ses.type !== 'rest',
-    nicotine: !!d.nicotine, alcohol_drinks: d.alcohol_drinks || 0, notes: d.notes || '', updated_at: d.updated_at,
+    alcohol_drinks: d.alcohol_drinks || 0, notes: d.notes || '', updated_at: d.updated_at,
     checklist: itemsFor(date).map(i => ({ key: i.key, label: i.title, group: i.group, required: i.req, done: !!d.checks[i.key] })),
     lifts: Object.keys(d.lifts).map(ex => ({ exercise: ex, weight: d.lifts[ex].weight, reps: d.lifts[ex].reps })).filter(l => l.weight > 0 && l.reps > 0),
     reading: Object.keys(d.pages).map(b => ({ book: b, pages: d.pages[b] || 0 }))
@@ -441,7 +442,7 @@ function showTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('is-active', t.dataset.view === name));
   document.body.classList.toggle('on-power', name === 'power');
   window.scrollTo({ top: 0 });
-  if (name === 'power') { PW.shown = PW.cur = 0; renderPower(); Aura.start(); } else if (typeof Aura !== 'undefined') Aura.stop();
+  if (name === 'power') { PW.shown = PW.cur = 0; renderPower(); Sky.start(); Aura.start(); } else if (typeof Aura !== 'undefined') { Aura.stop(); Sky.stop(); }
 }
 
 function bootCore() {
@@ -475,7 +476,6 @@ function renderLog() {
   if (!lift) $('#lift-hint').textContent = `No main lift on a ${ses.name.toLowerCase()} day.`;
   else if (l && l.weight > 0 && l.reps > 0) $('#lift-hint').textContent = `Est. 1RM ${epley(l.weight, l.reps).toFixed(0)} lb (Epley) · ${isDeload(date) ? 'deload week, same load, half the sets' : 'top set only'}`;
   else $('#lift-hint').textContent = 'Top set only. Est. 1RM via Epley: w × (1 + reps/30).';
-  $('#in-nic').classList.toggle('is-on', !!d.nicotine); $('#in-nic').setAttribute('aria-checked', d.nicotine ? 'true' : 'false');
   $('#alc-v').textContent = d.alcohol_drinks || 0;
   renderChart(); renderLiftTable(); renderCalendar();
 }
@@ -497,7 +497,6 @@ function bindLog() {
   ['#in-weight', '#in-sleep', '#in-steps', '#in-lift-w', '#in-lift-r'].forEach(id => $(id).addEventListener('change', readLogInputs));
   $('#in-notes').addEventListener('blur', () => { if ($('#in-notes').value.trim() !== (getDay(view.date).notes || '')) readLogInputs(); });
   $('#log-save').addEventListener('click', () => { readLogInputs(); $('#log-status').textContent = 'Saved on device' + (apiUrl() ? ', sending' : ''); flush(); setTimeout(() => { $('#log-status').textContent = ''; }, 2500); });
-  $('#in-nic').addEventListener('click', () => mutate(view.date, d => { d.nicotine = !d.nicotine; }));
   $('#alc-minus').addEventListener('click', () => mutate(view.date, d => { d.alcohol_drinks = Math.max(0, (d.alcohol_drinks || 0) - 1); }));
   $('#alc-plus').addEventListener('click', () => mutate(view.date, d => { d.alcohol_drinks = (d.alcohol_drinks || 0) + 1; }));
   // settings
@@ -976,6 +975,7 @@ const figure = (key, cls) => ART[key]
 function applyFighter() {
   const f = fighter(), root = $('#view-power');
   root.style.setProperty('--pw-acc', f.c); root.style.setProperty('--pw-acc2', f.c2); root.style.setProperty('--beam', f.beam);
+  Sky.theme(f);
   $('#pw-kanji').textContent = f.kanji;
   const others = Object.keys(FIGHTERS).filter(k => k !== PW.fighter);
   $('#pw-cast').innerHTML = figure(others[0], 'pw-f pw-f--l') + figure(others[1], 'pw-f pw-f--r') + figure(PW.fighter, 'pw-f pw-f--main');
@@ -1013,6 +1013,119 @@ function fireBeam() {
   const hero = $('#pw-hero'); hero.classList.remove('is-shake'); void hero.offsetWidth; hero.classList.add('is-shake');
   setTimeout(() => fx.remove(), 1500);
 }
+
+
+// ---------- battle sky (full-page canvas behind the Power tab)
+
+const Sky = {
+  on: false, ready: false, raf: 0, w: 0, h: 0, stars: [], streaks: [], bursts: [], t: 0, next: 60, nextBurst: 240, tint: '#4D7BFF', beam: '#FFE45C',
+  init() {
+    this.cv = $('#pw-sky');
+    if (!this.cv || !this.cv.getContext) return;
+    this.ctx = this.cv.getContext('2d'); this.ready = true;
+    window.addEventListener('resize', () => { if (document.body.classList.contains('on-power')) this.size(); });
+  },
+  theme(f) { this.tint = f.c; this.beam = f.beam; this.alt = f.c2; if (this.ready && this.w) { this.paintBg(); if (!this.on) this.draw(); } },
+  size() {
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    this.w = window.innerWidth; this.h = window.innerHeight;
+    this.cv.width = Math.round(this.w * dpr); this.cv.height = Math.round(this.h * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const area = this.w * this.h / 1e4;
+    this.stars = [];
+    [[0.9, 0.6, 0.02], [0.35, 1.0, 0.05], [0.12, 1.6, 0.1]].forEach(([dens, r, par]) => {
+      for (let i = 0; i < Math.round(area * dens); i++) this.stars.push({ x: Math.random() * this.w, y: Math.random() * this.h, r: r * (0.6 + Math.random() * 0.7), par, ph: Math.random() * 6.3, sp: 0.01 + Math.random() * 0.03 });
+    });
+    this.paintBg();
+    if (!this.on) this.draw();
+  },
+  /** Static layers painted once: deep space, nebula in the fighter's colours, full moon, planet horizon. */
+  paintBg() {
+    const w = this.w, h = this.h, bg = document.createElement('canvas');
+    bg.width = this.cv.width; bg.height = this.cv.height;
+    const g = bg.getContext('2d'); g.setTransform(this.cv.width / w, 0, 0, this.cv.height / h, 0, 0);
+    let gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#04061A'); gr.addColorStop(0.55, '#090D2C'); gr.addColorStop(1, '#120A26');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    const cloud = (x, y, r, col, a) => { const c = g.createRadialGradient(x, y, 0, x, y, r); c.addColorStop(0, col + a); c.addColorStop(1, col + '00'); g.fillStyle = c; g.fillRect(0, 0, w, h); };
+    const m = Math.max(w, h);
+    cloud(w * 0.82, h * 0.22, m * 0.55, this.tint, '40');
+    cloud(w * 0.12, h * 0.48, m * 0.5, '#6A2BB8', '30');
+    cloud(w * 0.55, h * 0.75, m * 0.45, this.alt || '#FF7A1A', '1C');
+    cloud(w * 0.3, h * 0.1, m * 0.3, '#2FA4FF', '18');
+    // dust lanes
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 70; i++) { const x = Math.random() * w, y = h * (0.15 + Math.random() * 0.6), r = 30 + Math.random() * 90; const c = g.createRadialGradient(x, y, 0, x, y, r); c.addColorStop(0, 'rgba(140,150,255,0.035)'); c.addColorStop(1, 'rgba(140,150,255,0)'); g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+    g.globalCompositeOperation = 'source-over';
+    // full moon, top right
+    const mr = Math.max(34, Math.min(w, h) * 0.085), mx = w - mr * 1.6, my = Math.max(mr * 2.6, h * 0.2);
+    let c = g.createRadialGradient(mx, my, mr * 0.8, mx, my, mr * 3.2); c.addColorStop(0, 'rgba(255,244,214,0.16)'); c.addColorStop(1, 'rgba(255,244,214,0)'); g.fillStyle = c; g.beginPath(); g.arc(mx, my, mr * 3.2, 0, 7); g.fill();
+    c = g.createRadialGradient(mx - mr * 0.35, my - mr * 0.35, mr * 0.1, mx, my, mr); c.addColorStop(0, '#E9E2C8'); c.addColorStop(0.7, '#BFB08A'); c.addColorStop(1, '#8E8060'); g.globalAlpha = 0.8; g.fillStyle = c; g.beginPath(); g.arc(mx, my, mr, 0, 7); g.fill(); g.globalAlpha = 1;
+    g.fillStyle = 'rgba(150,130,90,0.28)';
+    [[-0.3, -0.2, 0.22], [0.25, 0.1, 0.16], [-0.05, 0.4, 0.12], [0.35, -0.35, 0.1], [-0.45, 0.2, 0.09]].forEach(([dx, dy, r]) => { g.beginPath(); g.arc(mx + dx * mr, my + dy * mr, r * mr, 0, 7); g.fill(); });
+    // planet horizon, bottom
+    const pr = Math.max(w, h) * 1.1, px = w * 0.5, py = h + pr * 0.86;
+    c = g.createRadialGradient(px, py, pr * 0.96, px, py, pr * 1.08); c.addColorStop(0, this.tint + '00'); c.addColorStop(0.45, this.tint + '55'); c.addColorStop(1, this.tint + '00');
+    g.fillStyle = c; g.beginPath(); g.arc(px, py, pr * 1.08, 0, 7); g.fill();
+    c = g.createLinearGradient(0, py - pr, 0, h); c.addColorStop(0, '#1C3A5E'); c.addColorStop(0.5, '#0C1A33'); c.addColorStop(1, '#050A18');
+    g.fillStyle = c; g.beginPath(); g.arc(px, py, pr, 0, 7); g.fill();
+    g.strokeStyle = this.tint + 'AA'; g.lineWidth = 2; g.beginPath(); g.arc(px, py, pr, 0, 7); g.stroke();
+    this.bg = bg;
+  },
+  spawnStreak() {
+    const fromLeft = Math.random() < 0.5, y0 = this.h * (0.08 + Math.random() * 0.55);
+    const ang = (fromLeft ? 0 : Math.PI) + (Math.random() - 0.5) * 0.5, sp = 9 + Math.random() * 9;
+    const cols = [this.beam, this.tint, '#5FD0FF', '#FFD23F', '#C07CFF'];
+    this.streaks.push({ x: fromLeft ? -60 : this.w + 60, y: y0, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, len: 120 + Math.random() * 180, w: 1.5 + Math.random() * 2.5, col: cols[Math.floor(Math.random() * cols.length)] });
+  },
+  spawnBurst() {
+    this.bursts.push({ x: this.w * (0.1 + Math.random() * 0.8), y: this.h * (0.08 + Math.random() * 0.5), life: 0, max: 46, col: Math.random() < 0.5 ? this.beam : '#FFFFFF', r: 18 + Math.random() * 26 });
+  },
+  step() {
+    this.t++;
+    if (--this.next <= 0) { this.spawnStreak(); if (Math.random() < 0.3) this.spawnStreak(); this.next = 70 + Math.random() * 150; }
+    if (--this.nextBurst <= 0) { this.spawnBurst(); this.nextBurst = 260 + Math.random() * 360; }
+    this.streaks.forEach(s => { s.x += s.vx; s.y += s.vy; });
+    this.streaks = this.streaks.filter(s => s.x > -400 && s.x < this.w + 400 && s.y > -200 && s.y < this.h + 200);
+    this.bursts.forEach(b => b.life++); this.bursts = this.bursts.filter(b => b.life < b.max);
+  },
+  draw() {
+    const c = this.ctx, w = this.w, h = this.h, sy = window.scrollY || 0;
+    if (this.bg) c.drawImage(this.bg, 0, 0, w, h); else { c.fillStyle = '#070A18'; c.fillRect(0, 0, w, h); }
+    this.stars.forEach(st => {
+      const y = ((st.y - sy * st.par) % h + h) % h;
+      c.globalAlpha = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(st.ph + this.t * st.sp));
+      c.fillStyle = st.r > 1.3 ? '#FFF6D6' : '#DCE6FF';
+      c.beginPath(); c.arc(st.x, y, st.r, 0, 7); c.fill();
+      if (st.r > 1.5) { c.globalAlpha *= 0.4; c.fillRect(st.x - st.r * 3, y - 0.4, st.r * 6, 0.8); c.fillRect(st.x - 0.4, y - st.r * 3, 0.8, st.r * 6); }
+    });
+    c.globalAlpha = 1; c.globalCompositeOperation = 'lighter';
+    this.streaks.forEach(s => {
+      const n = Math.hypot(s.vx, s.vy), tx = s.x - s.vx / n * s.len, ty = s.y - s.vy / n * s.len;
+      const gr = c.createLinearGradient(tx, ty, s.x, s.y); gr.addColorStop(0, s.col + '00'); gr.addColorStop(0.8, s.col + 'AA'); gr.addColorStop(1, '#FFFFFF');
+      c.strokeStyle = gr; c.lineCap = 'round';
+      c.lineWidth = s.w * 4; c.globalAlpha = 0.25; c.beginPath(); c.moveTo(tx, ty); c.lineTo(s.x, s.y); c.stroke();
+      c.lineWidth = s.w; c.globalAlpha = 1; c.beginPath(); c.moveTo(tx, ty); c.lineTo(s.x, s.y); c.stroke();
+      const hg = c.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.w * 7); hg.addColorStop(0, '#FFFFFF'); hg.addColorStop(0.3, s.col + 'CC'); hg.addColorStop(1, s.col + '00');
+      c.fillStyle = hg; c.beginPath(); c.arc(s.x, s.y, s.w * 7, 0, 7); c.fill();
+    });
+    this.bursts.forEach(b => {
+      const t = b.life / b.max, a = 1 - t;
+      const fg = c.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * (1 + t * 2)); fg.addColorStop(0, `rgba(255,255,255,${a})`); fg.addColorStop(0.35, b.col + Math.round(a * 200).toString(16).padStart(2, '0')); fg.addColorStop(1, b.col + '00');
+      c.fillStyle = fg; c.beginPath(); c.arc(b.x, b.y, b.r * (1 + t * 2), 0, 7); c.fill();
+      c.globalAlpha = a * 0.8; c.strokeStyle = b.col; c.lineWidth = 2; c.beginPath(); c.arc(b.x, b.y, b.r * (0.8 + t * 5), 0, 7); c.stroke(); c.globalAlpha = 1;
+    });
+    c.globalCompositeOperation = 'source-over';
+  },
+  start() {
+    if (!this.ready) this.init(); if (!this.ready) return;
+    this.size();
+    if (REDUCE || this.on) { this.draw(); return; }
+    this.on = true;
+    const loop = () => { if (!this.on) return; this.step(); this.draw(); this.raf = requestAnimationFrame(loop); };
+    this.raf = requestAnimationFrame(loop);
+  },
+  stop() { this.on = false; cancelAnimationFrame(this.raf); }
+};
 
 // ---------- ki aura (canvas)
 
@@ -1264,7 +1377,7 @@ function sampleState() {
       const pages = {};
       if (checks.read) { const b = read.findIndex((r, j) => r < BOOKS[j].p); if (b >= 0) { const p = Math.min(BOOKS[b].p - read[b], 9 + Math.floor(rnd() * 10)); read[b] += p; pages[BOOKS[b].t] = p; } }
       st.days[d] = normalizeDay({ date: d, sleep_hours: sleep, steps, weight_lb: i % 2 === 0 && !isToday ? +(225 - i * 0.17 + (rnd() - 0.5) * 1.3).toFixed(1) : null,
-        nicotine: false, alcohol_drinks: i === 30 ? 3 : rnd() < 0.04 ? 1 : 0, notes: '', checks, lifts, pages, updated_at: '' });
+        alcohol_drinks: i === 30 ? 3 : rnd() < 0.04 ? 1 : 0, notes: '', checks, lifts, pages, updated_at: '' });
     }
     return st;
   });
@@ -1295,7 +1408,7 @@ function bindPower() {
     $('#pw-ribbon').hidden = !PW.sample;
     PW.shown = PW.cur = 0; renderPower();
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) Aura.stop(); else if (view.tab === 'power') Aura.start(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { Aura.stop(); Sky.stop(); } else if (view.tab === 'power') { Sky.start(); Aura.start(); } });
 }
 
 // ================================================================== BOOT

@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<canvas class="pw-sky" id="pw-sky" aria-hidden="true"></canvas>
 <div class="app">
 
   <!-- ================= TODAY ================= -->
@@ -173,7 +174,6 @@
     </div>
     <p class="muted" style="font-size:12.5px;margin-top:8px" id="lift-hint"></p>
 
-    <div class="toggle"><span class="toggle__k">Nicotine</span><button type="button" class="switch" id="in-nic" role="switch" aria-checked="false" aria-label="Nicotine used"></button></div>
     <div class="toggle"><span class="toggle__k">Alcohol, drinks</span>
       <span class="stepper"><button type="button" id="alc-minus" aria-label="Fewer drinks">−</button><span class="v num" id="alc-v">0</span><button type="button" id="alc-plus" aria-label="More drinks">+</button></span>
     </div>

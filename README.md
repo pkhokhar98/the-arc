@@ -73,7 +73,9 @@ each main lift ×5. Every page read +2. Every lb lost +500. Each drink −100.
 **Sample data** in the top-right swaps in a made-up 72-day run so you can see every panel filled in.
 It is generated in memory, never saved and never synced; a striped banner shows while it is on.
 
-The aura respects reduced motion: with it on, the flames render once and stay still.
+Behind the whole tab is a live battle sky: a nebula tinted to your fighter, parallax stars, a full moon, a planet horizon, and distant ki blasts and clashes. It only animates while the Power tab is open and visible.
+
+The aura and the sky respect reduced motion: with it on, both render once and stay still.
 
 ## How the data flows
 
