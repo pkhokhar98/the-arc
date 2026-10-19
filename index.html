@@ -118,13 +118,20 @@
       <section class="pw-panel pw-roster-p">
         <h2 class="pw-h"><b>Choose your fighter</b><span class="pw-jp">戦士</span></h2>
         <div class="pw-roster" id="pw-roster"></div>
-        <div class="pw-artbar">
-          <button type="button" class="pw-artbtn" id="pw-art-add">Add Vegeta art</button>
-          <button type="button" class="pw-artbtn pw-artbtn--ghost" id="pw-art-del" hidden>Remove</button>
-          <input type="file" id="pw-art-file" accept="image/*" hidden>
-          <span class="pw-art-status" id="pw-art-status" role="status" aria-live="polite"></span>
-        </div>
-        <p class="pw-note">Pick any picture of the selected fighter from your phone or computer. It stays on this device only: it is never uploaded, synced, or added to the site. A PNG with a transparent background looks best. Add it once on each device you use.</p>
+        <p class="pw-note">Give your fighters real pictures in <b>The cast</b> below. They show up here and in the hero.</p>
+      </section>
+
+      <section class="pw-panel pw-castp">
+        <h2 class="pw-h"><b>The cast</b><span class="pw-jp">仲間</span></h2>
+        <p class="pw-note">A different character coaches you each day, rotating through everyone with a picture. <b>Photo</b> picks one from this device and stays on it. <b>Link</b> takes an image address you paste and syncs it through your sheet, so phone and laptop both get it. Pictures you add are never put on the public site.</p>
+        <div class="cast" id="cast-grid"></div>
+        <form class="cast-link" id="cast-link" hidden>
+          <label class="label" for="cast-url" id="cast-link-l">Image link</label>
+          <input type="url" id="cast-url" placeholder="https://…/goku.png" autocomplete="off" spellcheck="false">
+          <div class="btnrow"><button type="submit" class="pw-artbtn">Save link</button><button type="button" class="pw-artbtn pw-artbtn--ghost" id="cast-cancel">Cancel</button></div>
+        </form>
+        <input type="file" id="cast-file" accept="image/*" hidden>
+        <p class="pw-art-status" id="cast-status" role="status" aria-live="polite"></p>
       </section>
 
       <section class="pw-panel">
@@ -297,7 +304,9 @@
 <aside class="coach" id="coach" aria-label="Daily coach">
   <div class="coach__bubble" id="coach-bubble" role="dialog" aria-labelledby="coach-who">
     <button type="button" class="coach__x" id="coach-x" aria-label="Close">×</button>
-    <div class="coach__head"><span class="coach__who" id="coach-who">Vegeta</span><span class="coach__day" id="coach-day">Day 000</span></div>
+    <div class="coach__pic" id="coach-pic"></div>
+    <div class="coach__head"><span class="coach__who" id="coach-who">Goku</span><span class="coach__day" id="coach-day">Day 000</span></div>
+    <div class="coach__title" id="coach-title"></div>
     <div class="coach__k">Lock in</div>
     <div class="coach__lock" id="coach-lock"></div>
     <p class="coach__why" id="coach-why"></p>

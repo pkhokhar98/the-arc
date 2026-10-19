@@ -1033,13 +1033,68 @@ const ArtDB = {
   put(k, v) { return this.run('readwrite', st => st.put(v, k)); },
   del(k) { return this.run('readwrite', st => st.delete(k)); }
 };
-const ART = {};   // fighter -> { url, cut }
+const CAST = {
+  goku:    { name: 'Goku', c: '#FF8A1E', k: '悟', title: 'Raised by Grandpa Gohan, trained by everyone' },
+  vegeta:  { name: 'Vegeta', c: '#4D7BFF', k: '王', title: 'Prince of all Saiyans' },
+  gohan:   { name: 'Gohan', c: '#9B5CFF', k: '飯', title: 'The scholar warrior' },
+  trunks:  { name: 'Trunks', c: '#B9A2FF', k: '剣', title: 'Warrior from the future' },
+  piccolo: { name: 'Piccolo', c: '#4FB04A', k: '魔', title: 'The mentor' },
+  krillin: { name: 'Krillin', c: '#FFB347', k: '亀', title: 'Strongest human' },
+  roshi:   { name: 'Master Roshi', c: '#E8C547', k: '仙', title: 'The turtle hermit' },
+  whis:    { name: 'Whis', c: '#5FD0FF', k: '天', title: 'Angel attendant' },
+  frieza:  { name: 'Frieza', c: '#C77DFF', k: '冷', title: 'Emperor of the universe' }
+};
+let LINKS = {};
+function mergeLinks() {
+  let sheet = {};
+  try { const v = (S.config || {}).cast_links; sheet = typeof v === 'string' && v.trim() ? JSON.parse(v) : (v && typeof v === 'object' ? v : {}); } catch (e) {}
+  LINKS = Object.assign({}, sheet, lsGet('arc.castLinks', {}) || {});
+}
+/** A picture for a cast member: this device's photo first, then a synced link. */
+function artFor(k) {
+  if (ART[k]) return ART[k];
+  if (LINKS[k]) return { url: LINKS[k], cut: !!((lsGet('arc.castCut', {}) || {})[k]), link: true };
+  return null;
+}
+const emblem = (k, cls = '') => `<span class="emblem ${cls} pw-jp" style="--c:${(CAST[k] || {}).c || '#FFD23F'}" aria-hidden="true">${(CAST[k] || {}).k || '?'}</span>`;
+const artImg = (k, cls) => { const a = artFor(k); return a ? `<img class="${cls} ${a.cut ? 'is-cut' : 'is-boxed'}" src="${esc(a.url)}" alt="" draggable="false" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'art-broken',textContent:'Link broken'}))">` : ''; };
+
+function probeCut(url) {
+  return new Promise(res => {
+    const i = new Image(); i.crossOrigin = 'anonymous'; i.referrerPolicy = 'no-referrer';
+    i.onload = () => {
+      try {
+        const w = 120, hh = Math.max(1, Math.round(120 * i.naturalHeight / i.naturalWidth)), cv = document.createElement('canvas'); cv.width = w; cv.height = hh;
+        const cx = cv.getContext('2d'); cx.drawImage(i, 0, 0, w, hh); const d = cx.getImageData(0, 0, w, hh).data;
+        let clear = 0, tot = 0; const pr = (x, y) => { tot++; if (d[(y * w + x) * 4 + 3] < 200) clear++; };
+        for (let x = 0; x < w; x += 3) { pr(x, 0); pr(x, hh - 1); } for (let y = 0; y < hh; y += 3) { pr(0, y); pr(w - 1, y); }
+        res(clear / tot > 0.3);
+      } catch (e) { res(false); }
+    };
+    i.onerror = () => res(false);
+    i.src = url;
+  });
+}
+async function saveLink(k, url) {
+  url = (url || '').trim();
+  if (url && !/^https?:\/\//i.test(url)) throw new Error('Paste the full link, starting with https://');
+  if (url) await new Promise((res, rej) => { const i = new Image(); i.referrerPolicy = 'no-referrer'; i.onload = res; i.onerror = () => rej(new Error('That link did not open as an image. Use the address of the image itself (right-click or long-press it, then copy image address).')); i.src = url; });
+  const cut = url ? await probeCut(url) : false;
+  const local = lsGet('arc.castLinks', {}) || {}; local[k] = url; lsSet('arc.castLinks', local);
+  const cuts = lsGet('arc.castCut', {}) || {}; cuts[k] = cut; lsSet('arc.castCut', cuts);
+  mergeLinks();
+  if (apiUrl()) { const out = {}; Object.keys(LINKS).forEach(x => { if (LINKS[x]) out[x] = LINKS[x]; }); apiFetch('POST', { action: 'config', config: { cast_links: JSON.stringify(out) } }).catch(() => {}); }
+  return cut;
+}
+
+const ART = {};   // cast member -> { url, cut } from this device
 
 async function loadArt() {
-  for (const k of Object.keys(FIGHTERS)) {
+  mergeLinks();
+  for (const k of Object.keys(CAST)) {
     try { const v = await ArtDB.get(k); if (v && v.blob) ART[k] = { url: URL.createObjectURL(v.blob), cut: !!v.cut }; } catch (e) { /* no IndexedDB: silhouettes stay */ }
   }
-  applyFighter();
+  applyFighter(); renderCast();
 }
 
 function readImage(file) {
@@ -1077,9 +1132,17 @@ async function removeArt(key) {
   try { await ArtDB.del(key); } catch (e) {}
   if (ART[key]) { URL.revokeObjectURL(ART[key].url); delete ART[key]; }
 }
-const figure = (key, cls) => ART[key]
-  ? `<img class="${cls} pw-art ${ART[key].cut ? 'is-cut' : 'is-boxed'}" src="${ART[key].url}" alt="" draggable="false">`
-  : silSVG(key, cls);
+const figure = (key, cls) => artFor(key) ? artImg(key, `${cls} pw-art`) : silSVG(key, cls);
+
+function renderCast() {
+  const g = $('#cast-grid'); if (!g) return;
+  mergeLinks();
+  g.innerHTML = Object.keys(CAST).map(k => { const c = CAST[k], a = artFor(k);
+    return `<div class="cast__c" style="--c:${c.c}"><div class="cast__pic">${a ? artImg(k, 'cast__img') : emblem(k)}</div>` +
+      `<div class="cast__n">${esc(c.name)}</div><div class="cast__src">${a ? (a.link ? 'link · synced' : 'photo · this device') : 'no picture yet'}</div>` +
+      `<div class="cast__b"><button type="button" data-act="photo" data-k="${k}">Photo</button><button type="button" data-act="link" data-k="${k}">Link</button>` +
+      (a ? `<button type="button" data-act="del" data-k="${k}" aria-label="Remove ${esc(c.name)} picture">✕</button>` : '') + `</div></div>`; }).join('');
+}
 
 function applyFighter() {
   const f = fighter(), root = $('#view-power');
@@ -1088,8 +1151,6 @@ function applyFighter() {
   if (typeof renderCoach === 'function' && $('#coach')) renderCoach();
   const others = Object.keys(FIGHTERS).filter(k => k !== PW.fighter);
   $('#pw-cast').innerHTML = figure(others[0], 'pw-f pw-f--l') + figure(others[1], 'pw-f pw-f--r') + figure(PW.fighter, 'pw-f pw-f--main');
-  $('#pw-art-add').textContent = ART[PW.fighter] ? `Replace ${f.name} art` : `Add ${f.name} art`;
-  $('#pw-art-del').hidden = !ART[PW.fighter];
   $('#pw-roster').innerHTML = Object.keys(FIGHTERS).map(k => { const x = FIGHTERS[k];
     return `<button type="button" class="pw-card" data-f="${k}" aria-pressed="${k === PW.fighter}" style="--c:${x.c}">` +
       figure(k, 'pw-card__art') + `<span class="pw-card__n">${x.name}</span><span class="pw-card__t">${esc(x.title)}</span>` +
@@ -1502,15 +1563,31 @@ function bindPower() {
     toast(`${fighter().name} steps in`);
   });
   $('#pw-ready').addEventListener('click', e => { if (e.target.closest('#pw-fire')) fireBeam(); });
-  $('#pw-art-add').addEventListener('click', () => $('#pw-art-file').click());
-  $('#pw-art-file').addEventListener('change', async e => {
-    const file = e.target.files && e.target.files[0]; e.target.value = '';
-    if (!file) return;
-    const st = $('#pw-art-status'); st.textContent = 'Powering up…';
-    try { const cut = await ingestArt(PW.fighter, file); applyFighter(); st.textContent = cut ? 'Cut-out art added.' : 'Art added. Its edges fade into the aura; a transparent PNG blends best.'; }
-    catch (err) { st.textContent = err.message || 'Could not add that image.'; }
+  let castKey = null;
+  const castStatus = t => { $('#cast-status').textContent = t; };
+  $('#cast-grid').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    castKey = b.dataset.k; const name = CAST[castKey].name;
+    if (b.dataset.act === 'photo') { $('#cast-link').hidden = true; $('#cast-file').click(); }
+    if (b.dataset.act === 'link') { $('#cast-link').hidden = false; $('#cast-link-l').textContent = `Image link for ${name}`; $('#cast-url').value = LINKS[castKey] || ''; $('#cast-url').focus(); }
+    if (b.dataset.act === 'del') {
+      await removeArt(castKey); if (LINKS[castKey]) await saveLink(castKey, '');
+      applyFighter(); renderCast(); renderCoach(); castStatus(`${name}'s picture removed.`);
+    }
   });
-  $('#pw-art-del').addEventListener('click', async () => { await removeArt(PW.fighter); applyFighter(); $('#pw-art-status').textContent = 'Art removed. Back to the silhouette.'; });
+  $('#cast-file').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file || !castKey) return;
+    const name = CAST[castKey].name; castStatus(`Powering up ${name}…`);
+    try { const cut = await ingestArt(castKey, file); applyFighter(); renderCast(); renderCoach(); castStatus(cut ? `${name} added as a cut-out.` : `${name} added. A transparent PNG blends into the aura best.`); }
+    catch (err) { castStatus(err.message || 'Could not add that image.'); }
+  });
+  $('#cast-link').addEventListener('submit', async e => {
+    e.preventDefault(); if (!castKey) return;
+    const name = CAST[castKey].name; castStatus(`Checking ${name}'s link…`);
+    try { await saveLink(castKey, $('#cast-url').value); $('#cast-link').hidden = true; applyFighter(); renderCast(); renderCoach(); castStatus(`${name} saved. The link syncs to your sheet, so your other devices get it too.`); }
+    catch (err) { castStatus(err.message); }
+  });
+  $('#cast-cancel').addEventListener('click', () => { $('#cast-link').hidden = true; castStatus(''); });
   loadArt();
   renderSagaRow();
   $('#saga-row').addEventListener('click', e => { const b = e.target.closest('.saga__opt'); if (b && b.dataset.k !== SG.k) applySaga(b.dataset.k, true); });
@@ -1551,6 +1628,18 @@ const QUOTES = [
 ];
 // Original lines written in each fighter's voice. {x} is today's lock-in, lowercased.
 const VOICE = {
+  goku:    ['Hey, it\'s me, Goku! {X} first, then let\'s eat!', 'Ooh, {x}? That sounds like a great workout!', 'Gotta get stronger! Today we start with {x}.',
+            'If I can push past my limits, you can push through {x}.', 'Chi-Chi says {x} comes first. She\'s scary when she\'s right.'],
+  piccolo: ['Focus. {X}. Nothing else matters until it\'s done.', 'You call that discipline? Prove it with {x}.', 'I didn\'t train you to skip {x}.',
+            'Quiet your mind. {X}. Then fight.', 'Weakness is a habit. Break it with {x}.'],
+  krillin: ['Hey, I\'m just a human and even I can handle {x}!', 'No Dragon Balls needed for {x}, buddy.', 'Trust me, skipping {x} never ends well. Ask me how I know.',
+            'Six dots on my forehead, one job for you: {x}.', 'I\'ve been knocked out more times than anyone. Still, {x}. Every day.'],
+  roshi:   ['Work hard, rest well, eat plenty. Today that means {x}.', 'Even a turtle gets there. Steady on {x}.', 'Back in my day we delivered milk up mountains. You can manage {x}.',
+            'Three hundred years of training taught me one thing: {x}, every single day.', 'Hohoho! {X} first. Then you may relax on the beach.'],
+  whis:    ['Oh my, {x}? How delightful. Do try to keep up.', 'Mastery begins by not overthinking {x}.', 'Lord Beerus has destroyed planets for less than skipping {x}. Hohoho.',
+            'A calm mind is a fast mind. {X}, please.', 'I\'ll be watching from the staff. {X}, if you would.'],
+  frieza:  ['Oh, how adorable. You think you can skip {x}? Try it.', 'I\'ll allow you to live, provided you handle {x}.', 'Even my soldiers manage {x}. Don\'t disappoint me.',
+            'Hohoho. {X}. Fail, and I\'ll be forced to transform.', 'You monkeys never learn. {X}, today, without excuses.'],
   vegeta: ['Hmph. {X}. Even a third-class warrior could manage that much.', 'A prince of all Saiyans doesn\'t skip {x}. Neither do you.',
            'Your power level is watching. Don\'t embarrass me over {x}.', 'Get {x} done and maybe I\'ll stop calling you Kakarot.', 'Pride is earned in the boring reps. Today that\'s {x}.'],
   gohan:  ['Study first, fight second. Today that means {x}.', 'You\'re stronger than you think. Just do {x} and see.',
@@ -1597,8 +1686,12 @@ function coachFocus(today) {
   const st = powerReport(today).streak;
   return { lock: 'Keep the streak', why: st ? `${st} clean day${st === 1 ? '' : 's'} in a row. Ten anchors, no exceptions.` : 'Ten anchors today. Start a streak.', t: 'discipline', x: 'the streak' };
 }
+function coachOfDay(today) {
+  const all = Object.keys(CAST), withArt = all.filter(k => artFor(k)), pool = withArt.length ? withArt : all;
+  return pool[dayIndex(today) % pool.length];
+}
 function coachMessage(today) {
-  const f = fighter(), key = PW.fighter in VOICE ? PW.fighter : 'vegeta', idx = dayIndex(today);
+  const key = coachOfDay(today), f = CAST[key], idx = dayIndex(today);
   const focus = coachFocus(today);
   const pool = QUOTES.filter(q => q.t === focus.t), qt = (pool.length ? pool : QUOTES)[idx % (pool.length || QUOTES.length)];
   const lines = VOICE[key], x = focus.x || focus.lock.toLowerCase(), X = x.charAt(0).toUpperCase() + x.slice(1);
@@ -1606,15 +1699,17 @@ function coachMessage(today) {
   return { f, focus, qt, line };
 }
 
-const faceHTML = key => ART[key]
-  ? `<img src="${ART[key].url}" alt="" class="coach__img ${ART[key].cut ? 'is-cut' : ''}" draggable="false">`
-  : `<svg viewBox="50 -8 140 150" aria-hidden="true">${SIL[key]}</svg>`;
+const faceHTML = key => artFor(key) ? artImg(key, 'coach__img') : emblem(key, 'emblem--face');
 
 function renderCoach() {
   const el = $('#coach'); if (!el) return;
-  const today = todayYMD(), m = coachMessage(today), seen = lsGet('arc.coach', '') === today;
+  mergeLinks();
+  const today = todayYMD(), m = coachMessage(today), key = coachOfDay(today), seen = lsGet('arc.coach', '') === today;
   el.style.setProperty('--c', m.f.c);
-  $('#coach-face').innerHTML = faceHTML(PW.fighter) + (seen ? '' : '<span class="coach__dot" aria-hidden="true">!</span>');
+  $('#coach-face').innerHTML = faceHTML(key) + (seen ? '' : '<span class="coach__dot" aria-hidden="true">!</span>');
+  $('#coach-pic').innerHTML = artFor(key) ? artImg(key, 'coach__big') : emblem(key, 'emblem--big') +
+    `<button type="button" class="coach__add" data-k="${key}">Add a picture of ${esc(m.f.name)}</button>`;
+  $('#coach-title').textContent = m.f.title;
   $('#coach-face').setAttribute('aria-label', `${m.f.name}'s message for today${seen ? '' : ', new'}`);
   $('#coach-who').textContent = m.f.name;
   $('#coach-day').textContent = dayNumber(today) >= 1 ? `Day ${pad(dayNumber(today), 3)}` : 'Day 0';
@@ -1634,6 +1729,11 @@ function bindCoach() {
   $('#coach-face').addEventListener('click', () => coachOpen(!$('#coach').classList.contains('is-open')));
   $('#coach-ok').addEventListener('click', () => coachOpen(false));
   $('#coach-x').addEventListener('click', () => coachOpen(false));
+  $('#coach-pic').addEventListener('click', e => {
+    if (!e.target.closest('.coach__add')) return;
+    coachOpen(false); showTab('power');
+    setTimeout(() => { const p = $('.pw-castp'); if (p) p.scrollIntoView({ behavior: REDUCE ? 'auto' : 'smooth', block: 'start' }); }, 80);
+  });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') coachOpen(false); });
   renderCoach();
   if (lsGet('arc.coach', '') !== todayYMD()) setTimeout(() => coachOpen(true), 1400);
@@ -1641,7 +1741,7 @@ function bindCoach() {
 
 // ================================================================== BOOT
 
-RENDERERS.push(renderLog, renderReading, renderPower, renderCoach);
+RENDERERS.push(renderLog, renderReading, renderPower, renderCoach, renderCast);
 bootCore();
 bindLog();
 bindNext();

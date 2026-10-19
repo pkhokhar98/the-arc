@@ -56,7 +56,6 @@ A Dragon Ball Z–themed dashboard over the same local data. It opens straight t
 | Power level | Cumulative score, see the formula below. Counts up on open, with the scouter lens scanning. |
 | Form | Base form 0 · Kaioken 9,000 · Super Saiyan 25,000 · SS2 50,000 · SS3 80,000 · SS God 115,000 · SS Blue 150,000 · Ultra Instinct 190,000. The aura colour follows the form; SS2, SS3 and Ultra Instinct add lightning. A perfect arc lands around 200,000. |
 | Last time on The Arc… | A DBZ-narrator recap of your last logged day and a cliffhanger for today. |
-| Fighter art | Under "Choose your fighter", **Add art** puts your own picture of the selected fighter into the hero and the roster card. It is stored in this browser's IndexedDB only: never uploaded, synced, or committed, so add it once per device. Transparent PNGs get an aura rim and float; ordinary photos fade into the aura at the edges. Without art, the original silhouettes show. |
 | Fighter | Vegeta, Gohan or Trunks (original silhouettes drawn in code). Your pick stands in the hero with the other two flanking, and changes the accent colour, signature attacks and some forms: Vegeta tops out at Ultra Ego, Gohan unlocks Ultimate and Beast, Trunks gets Super Saiyan Rage. Remembered per device. |
 | Ki charge | Today's required anchors, 0–10, named after your fighter's charge attack. At full charge a button fires their finisher (Final Flash, Father-Son Kamehameha, Shining Sword Attack) across the screen. |
 | Dragon Radar | One Dragon Ball per arc week with six or more clean days (the short final week needs all five). Seven summons the dragon. |
@@ -90,12 +89,14 @@ headers show the resulting times.
 **Next up** on Today shows what is due now (or next), when, and any earlier required anchors still open.
 Tap it to jump to that row.
 
-**The coach** is your chosen fighter in the bottom-right corner, on every tab. Once a day it opens a speech bubble
+**The coach** sits in the bottom-right corner on every tab. It is a different character each day, rotating through **The cast** (Goku, Vegeta, Gohan, Trunks, Piccolo, Krillin, Master Roshi, Whis, Frieza) among those you've given a picture; with no pictures yet it rotates through all nine and shows their emblem. Once a day it opens a speech bubble
 with one thing to lock in on, chosen from your data in this order: an anchor that slipped yesterday, your
 weakest anchor over 14 days (under 80 %), a short 7-day sleep average, losing weight too fast, a diet-break week,
 today's lift (with your last top set to beat) or run, otherwise the streak. It adds a public-domain quote that fits
 (Marcus Aurelius, Seneca, Epictetus, Franklin, Durant) and an original line in the fighter's voice.
-Tap the portrait any time to reopen it. If you've added fighter art, the coach uses it.
+Tap the portrait any time to reopen it.
+
+**Pictures** come from you, in The cast panel on the Power tab: **Photo** stores an image on this device only (IndexedDB); **Link** stores an image address in the sheet's Config as `cast_links`, so every device gets it. Nothing you add is committed to this public repo. Vegeta, Gohan and Trunks use the same pictures in the Power hero and fighter cards.
 
 ## How the data flows
 
