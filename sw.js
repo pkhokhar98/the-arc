@@ -1,6 +1,6 @@
 /* The Arc — service worker. Caches the shell so the pinned app opens with no signal.
    Data never goes through here: the app reads localStorage and talks to Apps Script directly. */
-const CACHE = 'arc-shell-v10';
+const CACHE = 'arc-shell-v11';
 const SHELL = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', e => {
@@ -13,6 +13,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (url.origin !== location.origin) return;            // fonts, Apps Script: straight to network
+  if (url.pathname.endsWith('/version.json')) return;     // update check always hits the network
   // network first for the shell so a deploy shows up on next open; cache as fallback
   e.respondWith(
     fetch(e.request).then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return res; })

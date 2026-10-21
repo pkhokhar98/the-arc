@@ -101,13 +101,19 @@ Tap the portrait any time to reopen it.
 ## How the data flows
 
 * Every tap writes to local state (`localStorage`) and re-renders at once. Nothing waits on the network.
-* Each changed date is queued. About a second later the queue is flushed to Apps Script as one
-  `batch` POST carrying the full day: numbers, every checklist item, lifts, reading pages.
+* Each changed date is queued along with exactly which fields this device changed. About a second later the app
+  pulls the sheet's copy, lays only those fields over it, and sends the merged day as one `batch` POST. A phone and a
+  laptop therefore never wipe each other's entries (a lift logged on one survives a tick on the other).
 * On open, on returning to the app, and when the connection comes back, the app pulls `?action=load`
   and reconciles: a date with a pending local write keeps the local copy; otherwise the newer
   `updated_at` wins. So the laptop and the phone converge without a server round-trip per tap.
 * The sheet holds one row per day in `Daily`, one row per item per day in `Checklist`, plus `Lifts`,
   `Reading`, `Weekly` (rebuilt by trigger every Sunday 21:00 Vancouver) and `Config`.
+
+**Don't add, delete or move columns in the sheet by hand.** Since backend 1.1.0 the script matches columns by
+header name and repairs a hand-edited tab on the next request, but deleting a column under an older backend
+shifts every row. The app re-syncs every 2 minutes while it is open, and a home-screen install updates itself
+when a new build is published (`version.json`; bump it together with `BUILD` in app.js).
 
 ## Where the numbers come from
 

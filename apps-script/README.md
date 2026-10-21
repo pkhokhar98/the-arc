@@ -5,6 +5,15 @@ It owns a spreadsheet called **Arc 180** with six tabs: Daily, Checklist, Lifts,
 Reading, Weekly, Config. You deploy it once under your own Google account; the
 frontend only ever talks to the web app URL.
 
+## Updating to 1.1.0 (current)
+
+1.1.0 matches columns by header name, repairs tabs that were edited by hand, and removes the retired nicotine
+columns. To update an existing deployment:
+
+1. Open the script project, select all of `Code.gs`, paste the new `apps-script/Code.gs`, save.
+2. **Deploy → Manage deployments →** pencil icon **→ Version: New version → Deploy.** The /exec URL stays the same.
+3. Open the app once. The first request rebuilds the Daily and Weekly tabs without the nicotine columns.
+
 ## 1. Create the script
 
 1. Go to <https://script.google.com> signed in as the account that should own the data.

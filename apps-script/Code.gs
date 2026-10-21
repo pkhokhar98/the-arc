@@ -17,17 +17,17 @@
  * POST bodies are sent as text/plain so the browser skips CORS preflight.
  */
 
-var VERSION = '1.0.0';
+var VERSION = '1.1.0';
 var SHEET_NAME = 'Arc 180';
 var PROP_ID = 'ARC_SPREADSHEET_ID';
 var TZ = 'America/Vancouver';
 
 var TABS = {
-  Daily: ['date','day_number','week','sleep_hours','weight_lb','steps','protein_hit','session','trained','anchors_done','anchors_total','clean_day','nicotine','alcohol_drinks','notes','updated_at'],
+  Daily: ['date','day_number','week','sleep_hours','weight_lb','steps','protein_hit','session','trained','anchors_done','anchors_total','clean_day','alcohol_drinks','notes','updated_at'],
   Checklist: ['date','item_key','item_label','group','required','done'],
   Lifts: ['date','exercise','top_set_weight','reps','est_1rm'],
   Reading: ['date','book','pages_today','cumulative_pages'],
-  Weekly: ['week','avg_sleep','avg_weight','weight_change','pct_bodyweight_per_week','clean_days','training_sessions','total_pages','nicotine_days','alcohol_drinks','flags'],
+  Weekly: ['week','avg_sleep','avg_weight','weight_change','pct_bodyweight_per_week','clean_days','training_sessions','total_pages','alcohol_drinks','flags'],
   Config: ['key','value']
 };
 
@@ -63,18 +63,38 @@ function getSS() {
   return ss;
 }
 
+/**
+ * Make every tab match TABS. Columns are matched by header NAME, so a column someone
+ * deleted, moved or added by hand in the sheet is repaired instead of scrambling rows:
+ * the data is re-read by name and rewritten in the expected order. Unknown columns
+ * (e.g. the retired "nicotine") are dropped.
+ */
 function ensureTabs(ss) {
   var names = Object.keys(TABS);
   names.forEach(function (name) {
     var sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
     var headers = TABS[name];
-    var existing = sh.getLastRow() > 0 ? sh.getRange(1, 1, 1, headers.length).getValues()[0] : [];
+    var width = Math.max(sh.getLastColumn(), 1);
+    var existing = sh.getLastRow() > 0 ? sh.getRange(1, 1, 1, width).getValues()[0] : [];
+    while (existing.length && (existing[existing.length - 1] === '' || existing[existing.length - 1] === null)) existing.pop();
     var same = existing.length === headers.length && existing.every(function (h, i) { return h === headers[i]; });
     if (!same) {
-      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sh.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      var rows = [];
+      if (sh.getLastRow() > 1 && existing.length) {
+        var data = sh.getRange(2, 1, sh.getLastRow() - 1, existing.length).getValues();
+        rows = data.filter(function (r) { return r[0] !== '' && r[0] !== null; }).map(function (r) {
+          var o = {}; existing.forEach(function (h, i) { if (h) o[String(h)] = r[i]; }); return o;
+        });
+      }
+      sh.getRange(1, 1, Math.max(sh.getMaxRows(), 1), Math.max(width, headers.length)).clearContent();
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
       sh.setFrozenRows(1);
+      if (rows.length) {
+        sh.getRange(2, 1, rows.length, headers.length).setValues(rows.map(function (o) {
+          return headers.map(function (h) { var v = o[h]; return v === undefined || v === null ? '' : v; });
+        }));
+      }
     }
     // Keep date columns as plain text so Sheets never turns "2026-10-19" into a Date.
     if (headers[0] === 'date') sh.getRange(1, 1, Math.max(sh.getMaxRows(), 2), 1).setNumberFormat('@');
@@ -144,7 +164,7 @@ function writeTab(ss, name, objs) {
   var sh = ss.getSheetByName(name);
   var headers = TABS[name];
   var last = sh.getLastRow();
-  if (last > 1) sh.getRange(2, 1, last - 1, headers.length).clearContent();
+  if (last > 1) sh.getRange(2, 1, last - 1, Math.max(sh.getLastColumn(), headers.length)).clearContent();
   if (!objs.length) return;
   var rows = objs.map(function (o) { return headers.map(function (h) { var v = o[h]; return v === undefined || v === null ? '' : v; }); });
   sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
@@ -210,7 +230,7 @@ function doPost(e) {
 
 /**
  * day = {
- *   date, sleep_hours, weight_lb, steps, session, trained, nicotine, alcohol_drinks, notes, updated_at,
+ *   date, sleep_hours, weight_lb, steps, session, trained, alcohol_drinks, notes, updated_at,
  *   checklist: [{key, label, group, required, done}],
  *   lifts: [{exercise, weight, reps}],
  *   reading: [{book, pages}]
@@ -248,7 +268,6 @@ function upsertDay(ss, cfg, day) {
     anchors_done: anchorsDone,
     anchors_total: required.length,
     clean_day: required.length > 0 && anchorsDone === required.length,
-    nicotine: !!day.nicotine,
     alcohol_drinks: num(day.alcohol_drinks) || 0,
     notes: day.notes || '',
     updated_at: incomingTs
@@ -322,7 +341,6 @@ function loadAll() {
       steps: num(r.steps),
       session: r.session,
       trained: toBool(r.trained),
-      nicotine: toBool(r.nicotine),
       alcohol_drinks: num(r.alcohol_drinks) || 0,
       notes: r.notes || '',
       updated_at: r.updated_at || '',
@@ -372,7 +390,6 @@ function weeklyRollup() {
     if (r.weight_lb !== '') w.weight.push(Number(r.weight_lb));
     if (toBool(r.clean_day)) w.clean++;
     if (toBool(r.trained)) w.train++;
-    if (toBool(r.nicotine)) w.nic++;
     w.alc += Number(r.alcohol_drinks) || 0;
   });
   reading.forEach(function (r) { touch(weekOf(r.date)).pages += Number(r.pages_today) || 0; });
@@ -398,7 +415,7 @@ function weeklyRollup() {
     });
     out.push({
       week: k, avg_sleep: avg(w.sleep), avg_weight: avgW, weight_change: change, pct_bodyweight_per_week: pct,
-      clean_days: w.clean, training_sessions: w.train, total_pages: w.pages, nicotine_days: w.nic, alcohol_drinks: w.alc,
+      clean_days: w.clean, training_sessions: w.train, total_pages: w.pages, alcohol_drinks: w.alc,
       flags: flags.join('; ')
     });
     if (avgW !== '') prevAvgW = avgW;

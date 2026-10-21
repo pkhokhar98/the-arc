@@ -3,6 +3,8 @@
    Local state first (localStorage), queued writes flushed to the Apps Script web app.
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
+const BUILD = '2026-10-21a';   // bump with version.json on every release
+
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
 const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
 
@@ -224,19 +226,47 @@ function loadLocal() {
   const s = lsGet(LS.state, null);
   if (s && s.days) { S = s; Object.keys(S.days).forEach(k => { S.days[k] = normalizeDay(S.days[k]); }); }
   Q = lsGet(LS.queue, {}) || {};
+  // older builds queued a bare timestamp: treat those as "send the whole day"
+  Object.keys(Q).forEach(k => { if (typeof Q[k] === 'string') Q[k] = { ts: Q[k], paths: null }; });
 }
 
 /** Apply a change to a day: patch(day) mutates. Saves, queues, re-renders. */
+/** Field-level paths that differ between two versions of a day: "notes", "checks.read", "lifts.Back squat"… */
+const DAY_FIELDS = ['sleep_hours', 'weight_lb', 'steps', 'alcohol_drinks', 'notes'];
+const DAY_MAPS = ['checks', 'lifts', 'pages'];
+function diffPaths(a, b) {
+  const out = [];
+  DAY_FIELDS.forEach(f => { if (JSON.stringify(a[f] ?? null) !== JSON.stringify(b[f] ?? null)) out.push(f); });
+  DAY_MAPS.forEach(m => {
+    const ka = a[m] || {}, kb = b[m] || {};
+    new Set([...Object.keys(ka), ...Object.keys(kb)]).forEach(k => { if (JSON.stringify(ka[k] ?? null) !== JSON.stringify(kb[k] ?? null)) out.push(m + '.' + k); });
+  });
+  return out;
+}
+/** Copy only the given paths from src onto dst (a path whose value is gone in src is deleted from dst). */
+function applyPaths(dst, src, paths) {
+  paths.forEach(p => {
+    const i = p.indexOf('.');
+    if (i < 0) { dst[p] = src[p]; return; }
+    const m = p.slice(0, i), k = p.slice(i + 1);
+    dst[m] = dst[m] || {};
+    if (src[m] && src[m][k] !== undefined) dst[m][k] = src[m][k]; else delete dst[m][k];
+  });
+  return dst;
+}
 function mutate(date, patch) {
-  const d = getDay(date);
+  const d = getDay(date), before = JSON.parse(JSON.stringify(d));
   patch(d);
   // derived ticks: logging sleep / steps sets their anchors
   const k = cfg();
   if (d.sleep_hours !== null) d.checks.sleep = d.sleep_hours >= k.sleep;
   if (d.steps !== null) d.checks.steps = d.steps >= k.steps;
+  const changed = diffPaths(before, d);
+  if (!changed.length) { render(); return; }
   d.updated_at = new Date().toISOString();
   S.days[date] = d;
-  Q[date] = d.updated_at;
+  const prev = Q[date], paths = prev && prev.paths === null ? null : [...new Set([...((prev && prev.paths) || []), ...changed])];
+  Q[date] = { ts: d.updated_at, paths };
   saveLocal();
   render();
   scheduleFlush();
@@ -310,34 +340,49 @@ async function apiFetch(method, bodyOrParams) {
   } finally { clearTimeout(t); }
 }
 
+/** Pull first, then send. Each queued day is rebuilt from the sheet's copy plus only the fields this
+ *  device changed, so a phone and a laptop never wipe each other's entries (e.g. lifts logged elsewhere). */
 async function flush() {
   const dates = Object.keys(Q);
   if (!dates.length || flushing || !apiUrl() || !navigator.onLine) { renderSync(); return; }
   flushing = true; renderSync('sending');
-  const snapshot = Object.assign({}, Q);
+  const snapshot = {}; dates.forEach(d => { snapshot[d] = Q[d].ts; });
   try {
+    const j = await apiFetch('GET', { action: 'load' });
+    absorb(j);
+    dates.forEach(date => {
+      const q = Q[date], loc = getDay(date);
+      if (!q || q.paths === null || !j.days || !j.days[date]) return;   // whole-day send, or the sheet has nothing yet
+      const merged = applyPaths(normalizeDay(JSON.parse(JSON.stringify(j.days[date]))), loc, q.paths);
+      merged.updated_at = loc.updated_at;
+      S.days[date] = merged;
+    });
     await apiFetch('POST', { action: 'batch', ops: dates.map(d => ({ day: toPayload(d) })) });
-    dates.forEach(d => { if (Q[d] === snapshot[d]) delete Q[d]; });
-    saveLocal(); syncErr = '';
+    dates.forEach(d => { if (Q[d] && Q[d].ts === snapshot[d]) delete Q[d]; });
+    saveLocal(); syncErr = ''; render();
   } catch (e) { syncErr = e.message; }
   flushing = false; renderSync();
   if (Object.keys(Q).length && !syncErr) scheduleFlush(500);
 }
 let syncErr = '';
 
+/** Take the sheet's copy of everything this device isn't in the middle of changing. */
+function absorb(j) {
+  S.config = j.config || {};
+  Object.keys(j.days || {}).forEach(date => {
+    if (Q[date]) return;                      // local change pending; merged at flush
+    const srv = normalizeDay(j.days[date]), loc = S.days[date];
+    if (!loc || !loc.updated_at || (srv.updated_at && srv.updated_at > loc.updated_at)) S.days[date] = srv;
+  });
+  lsSet(LS.pull, new Date().toISOString());
+}
 async function pull(force) {
   if (!apiUrl() || !navigator.onLine) { renderSync(); return; }
   if (!force && Date.now() - lastPullAt < 60000) return;
   lastPullAt = Date.now();
   try {
     const j = await apiFetch('GET', { action: 'load' });
-    S.config = j.config || {};
-    Object.keys(j.days || {}).forEach(date => {
-      if (Q[date]) return;                      // local change pending; local wins until flushed
-      const srv = normalizeDay(j.days[date]), loc = S.days[date];
-      if (!loc || (srv.updated_at && srv.updated_at > (loc.updated_at || ''))) S.days[date] = srv;
-    });
-    lsSet(LS.pull, new Date().toISOString()); syncErr = '';
+    absorb(j); syncErr = '';
     saveLocal(); render();
   } catch (e) { syncErr = e.message; renderSync(); }
 }
@@ -562,6 +607,21 @@ function bootCore() {
   $('#day-today').addEventListener('click', () => { view.date = todayYMD(); view.open.clear(); render(); });
   $('#sync-now').addEventListener('click', async () => { if (!apiUrl()) { showTab('log'); $('#settings').open = true; $('#in-api').focus(); return; } await flush(); await pull(true); toast(syncErr ? 'Sync failed' : 'Synced'); });
   window.addEventListener('online', () => { flush(); pull(true); });
+  // re-sync every 2 minutes while the app is on screen, so a laptop left open picks up phone entries
+  setInterval(() => { if (!document.hidden && !Object.keys(Q).length) pull(true); }, 120000);
+  window.addEventListener('focus', () => pull(false));
+  // a home-screen app can stay frozen on an old version for days: check for a new build when it comes back
+  const checkUpdate = async () => {
+    try {
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return;
+      const v = await r.json();
+      if (v.build && v.build !== BUILD && !['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement || {}).tagName)) {
+        toast('Updating to the latest version…'); saveLocal(); setTimeout(() => location.reload(), 600);
+      }
+    } catch (e) { /* offline: keep running this build */ }
+  };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+  setTimeout(checkUpdate, 4000);
   window.addEventListener('offline', renderSync);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { const t = todayYMD(); if (view.date !== t && view.date > t) view.date = t; render(); flush(); pull(false); } });
   // midnight rollover while the app stays open
@@ -1046,9 +1106,11 @@ const CAST = {
 };
 let LINKS = {};
 function mergeLinks() {
+  const before = JSON.stringify(LINKS);
   let sheet = {};
   try { const v = (S.config || {}).cast_links; sheet = typeof v === 'string' && v.trim() ? JSON.parse(v) : (v && typeof v === 'object' ? v : {}); } catch (e) {}
   LINKS = Object.assign({}, sheet, lsGet('arc.castLinks', {}) || {});
+  if (PW.ready && JSON.stringify(LINKS) !== before) { applyFighter(); renderCast(); }
 }
 /** A picture for a cast member: this device's photo first, then a synced link. */
 function artFor(k) {
@@ -1588,7 +1650,7 @@ function bindPower() {
     catch (err) { castStatus(err.message); }
   });
   $('#cast-cancel').addEventListener('click', () => { $('#cast-link').hidden = true; castStatus(''); });
-  loadArt();
+  loadArt().then(() => { PW.ready = true; });
   renderSagaRow();
   $('#saga-row').addEventListener('click', e => { const b = e.target.closest('.saga__opt'); if (b && b.dataset.k !== SG.k) applySaga(b.dataset.k, true); });
   applySaga(lsGet('arc.saga', 'westcity'), false);
