@@ -3,7 +3,7 @@
    Local state first (localStorage), queued writes flushed to the Apps Script web app.
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
-const BUILD = '2026-10-21e';   // bump with version.json on every release
+const BUILD = '2026-10-21f';   // bump with version.json on every release
 
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
 const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
@@ -391,6 +391,7 @@ async function pull(force) {
 }
 
 function renderSync(stateOverride) {
+  try { renderCastDiag(); } catch (e) { /* cast panel not built yet */ }
   const el = $('#sync'), txt = $('#sync-text'); if (!el) return;
   const q = Object.keys(Q).length, url = apiUrl();
   el.className = 'sync';
@@ -1251,11 +1252,17 @@ function renderCast() {
       `<div class="cast__b"><button type="button" data-act="photo" data-k="${k}">Photo</button><button type="button" data-act="link" data-k="${k}">Link</button>` +
       (a ? `<button type="button" data-act="del" data-k="${k}" aria-label="Remove ${esc(c.name)} picture">✕</button>` : '') + `</div></div>`; }).join('');
   Object.keys(CAST).forEach(castStatusFor);
-  // what this device has received, so a missing-pictures screenshot says why
+  renderCastDiag();
+}
+/** What this device has received, so a missing-pictures screenshot says why. Also refreshed on every sync. */
+function renderCastDiag() {
+  const diag = $('#cast-diag'); if (!diag || typeof LINKS === 'undefined') return;
   const linked = Object.keys(LINKS).filter(k => LINKS[k]).length, photos = Object.keys(ART).length, last = lsGet(LS.pull, '');
-  const diag = $('#cast-diag');
-  if (diag) diag.textContent = `This device: app ${BUILD} · ${linked} picture link${linked === 1 ? '' : 's'} from your sheet · ${photos} photo${photos === 1 ? '' : 's'} stored here · ` +
-    (!apiUrl() ? 'sheet not connected' : syncErr ? `sync problem: ${syncErr}` : last ? `last synced ${new Date(last).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'not synced yet');
+  const keyProblem = syncErr === KEY_ERR || (!syncKey() && apiUrl());
+  diag.classList.toggle('is-bad', !!(syncErr || keyProblem || !apiUrl()));
+  diag.textContent = `This device: app ${BUILD} · ${linked} picture link${linked === 1 ? '' : 's'} from your sheet · ${photos} photo${photos === 1 ? '' : 's'} stored here · ` +
+    (!apiUrl() ? 'sheet not connected: open Log → Sync' : keyProblem ? 'sync key missing or wrong: open Log → Sync, paste the key, tap Test' :
+     syncErr ? `sync problem: ${syncErr}` : last ? `last synced ${new Date(last).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'not synced yet');
 }
 
 function applyFighter() {

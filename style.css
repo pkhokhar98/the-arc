@@ -921,3 +921,4 @@ input[type="number"], input[type="text"], input[type="url"], textarea { backgrou
 .cast__b { width: 100%; justify-content: center; gap: 4px; }
 .cast__b button[data-act="photo"], .cast__b button[data-act="link"] { flex: 1 1 0; min-width: 0; padding: 0 4px; }
 .cast__b button[data-act="del"] { position: absolute; top: 4px; right: 4px; min-width: 30px; min-height: 30px; padding: 0; border-radius: 50%; clip-path: none; background: rgba(4, 7, 22, .7); }
+.cast-diag.is-bad { color: var(--ember); }
