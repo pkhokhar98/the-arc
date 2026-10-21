@@ -3,7 +3,7 @@
    Local state first (localStorage), queued writes flushed to the Apps Script web app.
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
-const BUILD = '2026-10-21c';   // bump with version.json on every release
+const BUILD = '2026-10-21d';   // bump with version.json on every release
 
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
 const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
@@ -677,6 +677,15 @@ function readLogInputs() {
 
 function bindLog() {
   ['#in-weight', '#in-sleep', '#in-steps', '#in-lift-w', '#in-lift-r'].forEach(id => $(id).addEventListener('change', readLogInputs));
+  // also save a moment after typing stops, and when the app is left mid-entry (no blur, so no change event)
+  let logT = 0;
+  const logSoon = () => { clearTimeout(logT); logT = setTimeout(readLogInputs, 1500); };
+  ['#in-weight', '#in-sleep', '#in-steps', '#in-lift-w', '#in-lift-r', '#in-notes'].forEach(id => $(id).addEventListener('input', logSoon));
+  const logNow = () => { if (view.tab !== 'log') return; clearTimeout(logT); readLogInputs(); flush(); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') logNow(); });
+  window.addEventListener('pagehide', logNow);
+  $$('.tab').forEach(t => t.addEventListener('pointerdown', () => { if (view.tab === 'log') { clearTimeout(logT); readLogInputs(); } }));
+  ['#day-prev', '#day-next', '#day-today'].forEach(id => $(id).addEventListener('pointerdown', () => { if (view.tab === 'log') { clearTimeout(logT); readLogInputs(); } }));
   $('#in-notes').addEventListener('blur', () => { if ($('#in-notes').value.trim() !== (getDay(view.date).notes || '')) readLogInputs(); });
   $('#log-save').addEventListener('click', () => { readLogInputs(); $('#log-status').textContent = 'Saved on device' + (apiUrl() ? ', sending' : ''); flush(); setTimeout(() => { $('#log-status').textContent = ''; }, 2500); });
   $('#alc-minus').addEventListener('click', () => mutate(view.date, d => { d.alcohol_drinks = Math.max(0, (d.alcohol_drinks || 0) - 1); }));
