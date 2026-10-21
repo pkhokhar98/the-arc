@@ -3,7 +3,7 @@
    Local state first (localStorage), queued writes flushed to the Apps Script web app.
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
-const BUILD = '2026-10-21d';   // bump with version.json on every release
+const BUILD = '2026-10-21e';   // bump with version.json on every release
 
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
 const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
@@ -1147,7 +1147,25 @@ function artFor(k) {
   return null;
 }
 const emblem = (k, cls = '') => `<span class="emblem ${cls} pw-jp" style="--c:${(CAST[k] || {}).c || '#FFD23F'}" aria-hidden="true">${(CAST[k] || {}).k || '?'}</span>`;
-const artImg = (k, cls) => { const a = artFor(k); return a ? `<img class="${cls} ${a.cut ? 'is-cut' : 'is-boxed'}" src="${esc(a.url)}" alt="" draggable="false" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'art-broken',textContent:'Link broken'}))">` : ''; };
+const ART_STATE = {};   // cast key -> 'ok' | 'failed', for the status shown in The cast
+const artImg = (k, cls) => { const a = artFor(k); return a ? `<img class="${cls} ${a.cut ? 'is-cut' : 'is-boxed'}" src="${esc(a.url)}" alt="" draggable="false" referrerpolicy="no-referrer" data-k="${k}" onload="artLoaded(this)" onerror="artFailed(this)">` : ''; };
+/** A picture loaded: note it so The cast can say so. */
+function artLoaded(img) { ART_STATE[img.dataset.k] = 'ok'; castStatusFor(img.dataset.k); }
+/** A picture failed: retry once with a normal referrer (some image hosts insist on one), then fall back to the emblem. */
+function artFailed(img) {
+  const k = img.dataset.k;
+  if (!img.dataset.retried) { img.dataset.retried = '1'; img.referrerPolicy = 'strict-origin-when-cross-origin'; img.src = img.src.split('#')[0] + '#r'; return; }
+  ART_STATE[k] = 'failed';
+  const span = document.createElement('span'); span.innerHTML = emblem(k); img.replaceWith(span.firstChild || span);
+  castStatusFor(k);
+}
+function castStatusFor(k) {
+  const el = document.querySelector(`.cast__src[data-k="${k}"]`); if (!el) return;
+  const a = artFor(k); if (!a) { el.textContent = 'no picture yet'; return; }
+  const st = ART_STATE[k], src = a.link ? 'link' : 'photo';
+  el.textContent = st === 'ok' ? `${src} · showing` : st === 'failed' ? `${src} · couldn't load, tap Link to replace` : `${src} · loading…`;
+  el.classList.toggle('is-bad', st === 'failed');
+}
 
 function probeCut(url) {
   return new Promise(res => {
@@ -1229,9 +1247,15 @@ function renderCast() {
   mergeLinks();
   g.innerHTML = Object.keys(CAST).map(k => { const c = CAST[k], a = artFor(k);
     return `<div class="cast__c" style="--c:${c.c}"><div class="cast__pic">${a ? artImg(k, 'cast__img') : emblem(k)}</div>` +
-      `<div class="cast__n">${esc(c.name)}</div><div class="cast__src">${a ? (a.link ? 'link · synced' : 'photo · this device') : 'no picture yet'}</div>` +
+      `<div class="cast__n">${esc(c.name)}</div><div class="cast__src" data-k="${k}">${a ? (a.link ? 'link · loading…' : 'photo · loading…') : 'no picture yet'}</div>` +
       `<div class="cast__b"><button type="button" data-act="photo" data-k="${k}">Photo</button><button type="button" data-act="link" data-k="${k}">Link</button>` +
       (a ? `<button type="button" data-act="del" data-k="${k}" aria-label="Remove ${esc(c.name)} picture">✕</button>` : '') + `</div></div>`; }).join('');
+  Object.keys(CAST).forEach(castStatusFor);
+  // what this device has received, so a missing-pictures screenshot says why
+  const linked = Object.keys(LINKS).filter(k => LINKS[k]).length, photos = Object.keys(ART).length, last = lsGet(LS.pull, '');
+  const diag = $('#cast-diag');
+  if (diag) diag.textContent = `This device: app ${BUILD} · ${linked} picture link${linked === 1 ? '' : 's'} from your sheet · ${photos} photo${photos === 1 ? '' : 's'} stored here · ` +
+    (!apiUrl() ? 'sheet not connected' : syncErr ? `sync problem: ${syncErr}` : last ? `last synced ${new Date(last).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'not synced yet');
 }
 
 function applyFighter() {
