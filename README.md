@@ -21,7 +21,7 @@ apps-script/test-local.js  node harness that runs Code.gs against a Sheets stub
 
 Follow [apps-script/README.md](apps-script/README.md). You end up with a web app URL ending in `/exec`.
 
-### 2. Put the URL in the frontend
+### 2. Connect each device
 
 Either edit the first constant in [app.js](app.js):
 
@@ -29,8 +29,9 @@ Either edit the first constant in [app.js](app.js):
 const API_URL = 'https://script.google.com/macros/s/XXXX/exec';
 ```
 
-or, on the phone, open **Log → Sync** at the bottom of the Log tab, paste the URL, tap **Save URL**,
-then **Test**. The pasted URL is kept in the browser and overrides the constant.
+or paste a different URL in **Log → Sync**. Then, on every device, paste the **sync key** (from `makeToken()` in Apps
+Script) into **Log → Sync** and tap **Test**. Without the key the sheet refuses every read and write, so the public
+site shows nobody your data. Phone shortcut: open the site once with `#key=YOUR_KEY` on the end of the address.
 
 ### 3. Deploy the frontend (GitHub Pages)
 

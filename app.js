@@ -3,7 +3,7 @@
    Local state first (localStorage), queued writes flushed to the Apps Script web app.
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
-const BUILD = '2026-10-21a';   // bump with version.json on every release
+const BUILD = '2026-10-21b';   // bump with version.json on every release
 
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
 const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
@@ -199,7 +199,9 @@ function itemsFor(date) {
 
 // ------------------------------------------------------------------ state
 
-const LS = { state: 'arc.state.v1', queue: 'arc.queue.v1', api: 'arc.api', pull: 'arc.lastPull' };
+const LS = { state: 'arc.state.v1', queue: 'arc.queue.v1', api: 'arc.api', pull: 'arc.lastPull', key: 'arc.key' };
+const syncKey = () => String(lsGet(LS.key, '') || '').trim();
+const KEY_ERR = 'Sync key missing or wrong';
 let S = { days: {}, config: {} };
 let Q = {};            // date -> ts of last local change not yet confirmed by the server
 const view = { date: todayYMD(), tab: 'today', open: new Set() };
@@ -330,12 +332,13 @@ async function apiFetch(method, bodyOrParams) {
   const url = apiUrl(); if (!url) throw new Error('no url');
   const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 25000);
   try {
+    const token = syncKey();
     const res = method === 'GET'
-      ? await fetch(url + '?' + new URLSearchParams(bodyOrParams), { signal: ctrl.signal, redirect: 'follow' })
-      : await fetch(url, { method: 'POST', body: JSON.stringify(bodyOrParams), signal: ctrl.signal, redirect: 'follow' });
+      ? await fetch(url + '?' + new URLSearchParams(Object.assign({}, bodyOrParams, token ? { token } : {})), { signal: ctrl.signal, redirect: 'follow' })
+      : await fetch(url, { method: 'POST', body: JSON.stringify(Object.assign({}, bodyOrParams, token ? { token } : {})), signal: ctrl.signal, redirect: 'follow' });
     const txt = await res.text();
     let j; try { j = JSON.parse(txt); } catch (e) { throw new Error('non-JSON reply (check deploy access = Anyone)'); }
-    if (!j.ok) throw new Error(j.error || 'server error');
+    if (!j.ok) throw new Error(j.error === 'unauthorized' ? KEY_ERR : (j.error || 'server error'));
     return j;
   } finally { clearTimeout(t); }
 }
@@ -601,11 +604,16 @@ function showTab(name) {
 
 function bootCore() {
   loadLocal();
+  if (/^#key=/.test(location.hash)) {
+    lsSet(LS.key, decodeURIComponent(location.hash.slice(5)).trim());
+    history.replaceState(null, '', location.pathname + location.search);
+    setTimeout(() => toast('Sync key saved on this device'), 600);
+  }
   $$('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.view)));
   $('#day-prev').addEventListener('click', () => { view.date = addDays(view.date, -1); view.open.clear(); render(); });
   $('#day-next').addEventListener('click', () => { if (view.date < todayYMD()) { view.date = addDays(view.date, 1); view.open.clear(); render(); } });
   $('#day-today').addEventListener('click', () => { view.date = todayYMD(); view.open.clear(); render(); });
-  $('#sync-now').addEventListener('click', async () => { if (!apiUrl()) { showTab('log'); $('#settings').open = true; $('#in-api').focus(); return; } await flush(); await pull(true); toast(syncErr ? 'Sync failed' : 'Synced'); });
+  $('#sync-now').addEventListener('click', async () => { if (!apiUrl() || syncErr === KEY_ERR) { showTab('log'); $('#settings').open = true; $('#in-api').focus(); return; } await flush(); await pull(true); toast(syncErr ? 'Sync failed' : 'Synced'); });
   window.addEventListener('online', () => { flush(); pull(true); });
   // re-sync every 2 minutes while the app is on screen, so a laptop left open picks up phone entries
   setInterval(() => { if (!document.hidden && !Object.keys(Q).length) pull(true); }, 120000);
@@ -670,13 +678,19 @@ function bindLog() {
   $('#alc-plus').addEventListener('click', () => mutate(view.date, d => { d.alcohol_drinks = (d.alcohol_drinks || 0) + 1; }));
   // settings
   $('#in-api').value = lsGet(LS.api, '') || API_URL;
-  $('#api-save').addEventListener('click', () => { lsSet(LS.api, $('#in-api').value.trim()); syncErr = ''; renderSync(); toast('URL saved'); flush(); pull(true); });
+  $('#in-key').value = syncKey();
+  const saveSync = () => { const u = $('#in-api').value.trim(); lsSet(LS.api, u === API_URL ? '' : u); lsSet(LS.key, $('#in-key').value.trim()); };
+  $('#api-save').addEventListener('click', () => { saveSync(); syncErr = ''; renderSync(); toast('Sync settings saved'); flush(); pull(true); });
   $('#api-test').addEventListener('click', async () => {
-    const st = $('#api-status'); st.textContent = 'Testing…';
-    lsSet(LS.api, $('#in-api').value.trim());
-    try { const j = await apiFetch('GET', { action: 'ping' }); st.textContent = `OK · backend v${j.version}`; syncErr = ''; pull(true); }
-    catch (e) { st.textContent = 'Failed: ' + e.message; }
+    const st = $('#api-status'); st.textContent = 'Testing…'; saveSync();
+    try {
+      const p = await apiFetch('GET', { action: 'ping' });
+      if (!p.locked) { st.textContent = `Connected · backend v${p.version} has no key check yet (paste the new Code.gs)`; syncErr = ''; pull(true); return; }
+      await apiFetch('GET', { action: 'check' });
+      st.textContent = `Connected · key accepted · backend v${p.version}`; syncErr = ''; flush(); pull(true);
+    } catch (e) { st.textContent = e.message === KEY_ERR ? 'Reached the sheet, but the key is wrong. Run makeToken() in Apps Script and paste its key.' : 'Failed: ' + e.message; }
   });
+  $('#key-show').addEventListener('click', () => { const i = $('#in-key'); i.type = i.type === 'password' ? 'text' : 'password'; $('#key-show').textContent = i.type === 'password' ? 'Show' : 'Hide'; });
   $('#export-json').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), state: S, queue: Q }, null, 2)], { type: 'application/json' });
     const a = h('a', { href: URL.createObjectURL(blob), download: `arc-${todayYMD()}.json` }); document.body.append(a); a.click(); a.remove();

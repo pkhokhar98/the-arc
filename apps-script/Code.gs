@@ -6,6 +6,9 @@
  * (or adopts the bound one), builds every tab, seeds Config, and installs the
  * Sunday-night weekly rollup trigger.
  *
+ * Every request except ?action=ping must carry the sync key: `token` as a query parameter on GET,
+ * or a `token` field in the POST body. Run makeToken() once in the editor to create it and print it.
+ *
  * HTTP API (all responses are JSON):
  *   GET  ?action=ping                 -> { ok, version, time }
  *   GET  ?action=load                 -> { ok, config, days, weekly, books }
@@ -17,7 +20,8 @@
  * POST bodies are sent as text/plain so the browser skips CORS preflight.
  */
 
-var VERSION = '1.1.0';
+var VERSION = '1.2.0';
+var PROP_TOKEN = 'ARC_TOKEN';
 var SHEET_NAME = 'Arc 180';
 var PROP_ID = 'ARC_SPREADSHEET_ID';
 var TZ = 'America/Vancouver';
@@ -113,9 +117,36 @@ function setup() {
   var ss = getSS();
   ensureTabs(ss);
   installTriggers();
+  var key = ensureToken();
   Logger.log('Arc 180 ready: ' + ss.getUrl());
+  Logger.log('Sync key (paste this into the app, Log → Sync): ' + key);
   return ss.getUrl();
 }
+
+// ---------------------------------------------------------------- sync key
+
+function ensureToken() {
+  var props = PropertiesService.getScriptProperties();
+  var t = props.getProperty(PROP_TOKEN);
+  if (!t) { t = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8); props.setProperty(PROP_TOKEN, t); }
+  return t;
+}
+/** Run from the editor to create the sync key, or to see it again. */
+function makeToken() {
+  var t = ensureToken();
+  Logger.log('Sync key (paste this into the app, Log → Sync): ' + t);
+  return t;
+}
+/** Run from the editor if the key ever leaks. Every device then needs the new key. */
+function rotateToken() {
+  PropertiesService.getScriptProperties().deleteProperty(PROP_TOKEN);
+  return makeToken();
+}
+function authorized(token) {
+  var t = PropertiesService.getScriptProperties().getProperty(PROP_TOKEN);
+  return !!t && typeof token === 'string' && token.length === t.length && token === t;
+}
+var UNAUTHORIZED = { ok: false, error: 'unauthorized' };
 
 function installTriggers() {
   var have = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'weeklyRollup'; });
@@ -181,8 +212,10 @@ function getConfig(ss) {
 function doGet(e) {
   var p = (e && e.parameter) || {};
   try {
-    switch (p.action || 'ping') {
-      case 'ping': return json({ ok: true, version: VERSION, time: new Date().toISOString() });
+    if ((p.action || 'ping') === 'ping') return json({ ok: true, version: VERSION, time: new Date().toISOString(), locked: true });
+    if (!authorized(p.token)) return json(UNAUTHORIZED);
+    switch (p.action) {
+      case 'check': return json({ ok: true, version: VERSION });
       case 'load': return json(loadAll());
       case 'rollup': return json({ ok: true, weekly: weeklyRollup() });
       default: return json({ ok: false, error: 'unknown action ' + p.action });
@@ -196,6 +229,7 @@ function doPost(e) {
   var body;
   try { body = JSON.parse(e.postData.contents); }
   catch (err) { return json({ ok: false, error: 'bad json' }); }
+  if (!authorized(body && body.token)) return json(UNAUTHORIZED);
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(20000);

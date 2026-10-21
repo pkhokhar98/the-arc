@@ -37,14 +37,15 @@ const sandbox = {
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ _s: s, setMimeType() { return this; } }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   ScriptApp: { WeekDay: { SUNDAY: 'SUNDAY' }, getProjectTriggers: () => [], newTrigger: () => ({ timeBased() { return this; }, onWeekDay() { return this; }, atHour() { return this; }, inTimezone() { return this; }, create() { sandbox._trig = true; } }) },
-  Utilities: { formatDate: (d) => d.toISOString().slice(0, 10) },
+  Utilities: { formatDate: (d) => d.toISOString().slice(0, 10), getUuid: () => require('crypto').randomUUID() },
   Logger: { log: console.log },
   console,
 };
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8'), sandbox);
-const get = (q) => JSON.parse(sandbox.doGet({ parameter: q })._s);
-const post = (b) => JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify(b) } })._s);
+let KEY = '';
+const get = (q) => JSON.parse(sandbox.doGet({ parameter: Object.assign({ token: KEY }, q) })._s);
+const post = (b) => JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify(Object.assign({ token: KEY }, b)) } })._s);
 const assert = (c, m) => { if (!c) { console.error('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
 
 // Old layout from v1.0.0: Daily had a nicotine column. ensureTabs must drop it and keep every value under its own header.
@@ -58,14 +59,27 @@ sandbox.setup();
   const row = [...Array(16)].map((_, i) => oldDaily.cell(2, i + 1));
   assert(head.indexOf('nicotine') === -1 && head[12] === 'alcohol_drinks' && head[14] === 'updated_at' && head[15] === '', 'old nicotine column removed, headers in new order');
   assert(row[12] === 1 && row[13] === 'old note' && row[14] === '2026-10-10T20:00:00.000Z' && row[15] === '', 'old row values moved under the right headers');
-  const L0 = JSON.parse(sandbox.doGet({ parameter: { action: 'load' } })._s);
+  const L0 = JSON.parse(sandbox.doGet({ parameter: { action: 'load', token: props.ARC_TOKEN } })._s);
   assert(L0.days['2026-10-10'].notes === 'old note' && L0.days['2026-10-10'].updated_at === '2026-10-10T20:00:00.000Z' && !('nicotine' in L0.days['2026-10-10']), 'migrated row loads correctly');
   oldDaily.rows = [oldDaily.rows[0]];   // clean slate for the rest of the checks
 }
 assert(Object.keys(sandbox.TABS).every(n => ss.getSheetByName(n)), 'setup created every tab');
 assert(ss.getSheetByName('Config').getLastRow() === 12, 'config seeded (11 keys)');
 assert(sandbox._trig, 'weekly trigger installed');
+KEY = props.ARC_TOKEN || '';
+assert(KEY.length >= 32, 'setup created a sync key');
 assert(get({ action: 'ping' }).ok, 'ping');
+{
+  const raw = (q) => JSON.parse(sandbox.doGet({ parameter: q })._s);
+  const rawPost = (b) => JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify(b) } })._s);
+  assert(raw({ action: 'ping' }).ok, 'ping works without the key');
+  assert(raw({ action: 'load' }).error === 'unauthorized', 'load without the key is refused');
+  assert(raw({ action: 'load', token: 'wrong' }).error === 'unauthorized', 'load with a wrong key is refused');
+  assert(rawPost({ action: 'config', config: { goal_weight: 1 } }).error === 'unauthorized', 'write without the key is refused');
+  assert(rawPost({ action: 'config', token: KEY.slice(0, -1) + 'x', config: { goal_weight: 1 } }).error === 'unauthorized', 'write with a wrong key is refused');
+  assert(get({ action: 'check' }).ok, 'check with the key passes');
+  assert(sandbox.makeToken() === KEY, 'makeToken shows the same key again');
+}
 
 const checklist = [
   { key: 'sleep', label: '7.5 hours minimum', group: 'SLEEP', required: true, done: true },

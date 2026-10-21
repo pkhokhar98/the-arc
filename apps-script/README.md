@@ -5,14 +5,21 @@ It owns a spreadsheet called **Arc 180** with six tabs: Daily, Checklist, Lifts,
 Reading, Weekly, Config. You deploy it once under your own Google account; the
 frontend only ever talks to the web app URL.
 
-## Updating to 1.1.0 (current)
+## Updating to 1.2.0 (current)
 
-1.1.0 matches columns by header name, repairs tabs that were edited by hand, and removes the retired nicotine
-columns. To update an existing deployment:
+1.2.0 locks the sheet behind a **sync key**: every request except `?action=ping` must carry it, so nobody who
+opens the public site can read or change your data. It also includes 1.1.0 (columns matched by header name,
+hand-edited tabs repaired, nicotine columns removed).
 
 1. Open the script project, select all of `Code.gs`, paste the new `apps-script/Code.gs`, save.
-2. **Deploy → Manage deployments →** pencil icon **→ Version: New version → Deploy.** The /exec URL stays the same.
-3. Open the app once. The first request rebuilds the Daily and Weekly tabs without the nicotine columns.
+2. In the function dropdown pick **makeToken**, press **Run**, then open **Execution log** and copy the key it prints.
+   Run it again any time to see the same key. `rotateToken` makes a new one if it ever leaks.
+3. **Deploy → Manage deployments →** pencil icon **→ Version: New version → Deploy.** The /exec URL stays the same.
+4. On each device: open the app, **Log → Sync**, paste the key, tap **Test**. It should say "key accepted".
+   Shortcut for the phone: open `https://pkhokhar98.github.io/the-arc/#key=YOUR_KEY` once; the app saves the key and
+   removes it from the address bar. Don't share that link.
+
+The /exec URL itself is in this public repo's history, which is fine: without the key it only answers `ping`.
 
 ## 1. Create the script
 
@@ -59,7 +66,7 @@ curl -sL "$ARC_URL?action=ping"
 Expect `{"ok":true,"version":"1.0.0",...}`. The `-L` matters: Apps Script answers with a redirect.
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' -X POST "$ARC_URL" -H 'Content-Type: text/plain' --data '{"action":"day","day":{"date":"2026-10-19","sleep_hours":7.6,"weight_lb":225,"steps":8400,"session":"Lower A","trained":true,"updated_at":"2026-10-19T23:00:00.000Z","checklist":[{"key":"sleep","label":"7.5 hours minimum","group":"SLEEP","required":true,"done":true}],"lifts":[{"exercise":"Back squat","weight":225,"reps":8}],"reading":[{"book":"Meditations","pages":12}]}}'
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$ARC_URL" -H 'Content-Type: text/plain' --data '{"action":"day","token":"YOUR_KEY","day":{"date":"2026-10-19","sleep_hours":7.6,"weight_lb":225,"steps":8400,"session":"Lower A","trained":true,"updated_at":"2026-10-19T23:00:00.000Z","checklist":[{"key":"sleep","label":"7.5 hours minimum","group":"SLEEP","required":true,"done":true}],"lifts":[{"exercise":"Back squat","weight":225,"reps":8}],"reading":[{"book":"Meditations","pages":12}]}}'
 ```
 Expect `302`. Apps Script answers every POST with a redirect to a one-shot echo URL; the write has
 already happened by then. Don't add `-L` here: curl turns the redirected POST into a GET and Google
@@ -68,12 +75,12 @@ follow the same redirect and receive the JSON body fine, which is what the app r
 Check the write with the load call:
 
 ```bash
-curl -sL "$ARC_URL?action=load"
+curl -sL "$ARC_URL?action=load&token=$ARC_KEY"
 ```
 Returns `config`, `days` (keyed by date), `weekly`, and today's date in Vancouver time.
 
 ```bash
-curl -sL "$ARC_URL?action=rollup"
+curl -sL "$ARC_URL?action=rollup&token=$ARC_KEY"
 ```
 Rebuilds the Weekly tab on demand (the trigger does this automatically every Sunday night).
 
