@@ -3,7 +3,7 @@
    Local state first (localStorage), queued writes flushed to the Apps Script web app.
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
-const BUILD = '2026-10-21b';   // bump with version.json on every release
+const BUILD = '2026-10-21c';   // bump with version.json on every release
 
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
 const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
@@ -648,9 +648,11 @@ function renderLog() {
   const lift = ses.main || null;
   $('#lift-label').textContent = lift ? `Main lift · ${lift}` : 'Main lift';
   $('#in-lift-w').disabled = !lift; $('#in-lift-r').disabled = !lift;
-  const l = lift ? d.lifts[lift] : null;
-  setIf('#in-lift-w', l ? l.weight : ''); setIf('#in-lift-r', l ? l.reps : '');
+  const l = lift ? d.lifts[lift] : null, dr = lift ? LIFT_DRAFT[date] : null;
+  // a half-typed set (weight without reps or the reverse) stays on screen until it is complete
+  setIf('#in-lift-w', dr ? dr.w : (l ? l.weight : '')); setIf('#in-lift-r', dr ? dr.r : (l ? l.reps : ''));
   if (!lift) $('#lift-hint').textContent = `No main lift on a ${ses.name.toLowerCase()} day.`;
+  else if (dr) $('#lift-hint').textContent = dr.w === null ? 'Add the weight to save this set.' : 'Add the reps to save this set.';
   else if (l && l.weight > 0 && l.reps > 0) $('#lift-hint').textContent = `Est. 1RM ${epley(l.weight, l.reps).toFixed(0)} lb (Epley) · ${isDeload(date) ? 'deload week, same load, half the sets' : 'top set only'}`;
   else $('#lift-hint').textContent = 'Top set only. Est. 1RM via Epley: w × (1 + reps/30).';
   $('#alc-v').textContent = d.alcohol_drinks || 0;
@@ -658,6 +660,7 @@ function renderLog() {
 }
 const epley = (w, r) => w * (1 + r / 30);
 
+const LIFT_DRAFT = {};   // date -> { w, r } while only one of weight / reps is filled in
 function readLogInputs() {
   const date = view.date, ses = sessionFor(date);
   const num = id => { const v = $(id).value; return v === '' ? null : Number(v); };
@@ -665,7 +668,9 @@ function readLogInputs() {
     d.weight_lb = num('#in-weight'); d.sleep_hours = num('#in-sleep'); d.steps = num('#in-steps'); d.notes = $('#in-notes').value.trim();
     if (ses.main) {
       const w = num('#in-lift-w'), r = num('#in-lift-r');
-      if (w > 0 && r > 0) d.lifts[ses.main] = { weight: w, reps: r }; else delete d.lifts[ses.main];
+      if (w > 0 && r > 0) { d.lifts[ses.main] = { weight: w, reps: r }; delete LIFT_DRAFT[date]; }
+      else if (w === null && r === null) { delete d.lifts[ses.main]; delete LIFT_DRAFT[date]; }   // both cleared on purpose
+      else LIFT_DRAFT[date] = { w, r };                                                          // half-typed: keep it, don't touch the saved set
     }
   });
 }
