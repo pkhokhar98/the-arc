@@ -236,8 +236,9 @@
         <label class="field"><span class="label">Apps Script web app URL</span><input type="url" id="in-api" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"></label>
         <div class="field"><label class="label" for="in-key">Sync key</label>
           <div class="keyrow"><input type="password" id="in-key" placeholder="From makeToken() in Apps Script" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="btn btn--sm" id="key-show">Show</button></div></div>
-        <div class="btnrow" style="margin-top:0"><button type="button" class="btn btn--sm" id="api-save">Save</button><button type="button" class="btn btn--sm" id="api-test">Test</button><span class="status" id="api-status"></span></div>
-        <p>The key keeps your sheet private: without it, nobody who opens this site can read or change your data. It stays on this device. Enter it once on each device.</p>
+        <div class="btnrow" style="margin-top:0"><button type="button" class="btn btn--sm" id="api-save">Save</button><button type="button" class="btn btn--sm" id="api-test">Test</button><button type="button" class="btn btn--sm" id="key-link">Copy my link</button><span class="status" id="api-status"></span></div>
+        <input type="text" id="key-link-out" readonly hidden aria-label="Your personal sync link">
+        <p>The key keeps your sheet private: without it, nobody who opens this site can read or change your data. <b>Copy my link</b> makes a personal link with the key built in: open it on any phone or browser (even a Private tab) and it syncs straight away. Keep that link to yourself.</p>
         <p>Queue: <b id="q-count">0</b> pending · last pull <span id="last-pull">never</span>. Writes are stored on this device first and flushed when online.</p>
         <p><button type="button" class="btn btn--sm" id="export-json">Export local JSON</button></p>
       </div>

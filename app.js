@@ -3,7 +3,7 @@
    Local state first (localStorage), queued writes flushed to the Apps Script web app.
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
-const BUILD = '2026-10-21f';   // bump with version.json on every release
+const BUILD = '2026-10-23a';   // bump with version.json on every release
 
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
 const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
@@ -605,10 +605,11 @@ function showTab(name) {
 
 function bootCore() {
   loadLocal();
+  // Personal link (…/the-arc/#key=…): the key rides in the address, so any tab or home-screen icon opened
+  // from it syncs with no setup, even a Private tab. The part after # never leaves the phone.
   if (/^#key=/.test(location.hash)) {
-    lsSet(LS.key, decodeURIComponent(location.hash.slice(5)).trim());
-    history.replaceState(null, '', location.pathname + location.search);
-    setTimeout(() => toast('Sync key saved on this device'), 600);
+    const k = decodeURIComponent(location.hash.slice(5)).trim();
+    if (k && k !== syncKey()) { lsSet(LS.key, k); setTimeout(() => toast('Synced with your personal link'), 600); }
   }
   $$('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.view)));
   $('#day-prev').addEventListener('click', () => { view.date = addDays(view.date, -1); view.open.clear(); render(); });
@@ -704,6 +705,15 @@ function bindLog() {
       await apiFetch('GET', { action: 'check' });
       st.textContent = `Connected · key accepted · backend v${p.version}`; syncErr = ''; flush(); pull(true);
     } catch (e) { st.textContent = e.message === KEY_ERR ? 'Reached the sheet, but the key is wrong. Run makeToken() in Apps Script and paste its key.' : 'Failed: ' + e.message; }
+  });
+  $('#key-link').addEventListener('click', () => {
+    const k = $('#in-key').value.trim() || syncKey(), st = $('#api-status');
+    if (!k) { st.textContent = 'Paste your sync key first.'; return; }
+    const link = location.origin + location.pathname + '#key=' + encodeURIComponent(k);
+    $('#key-link-out').value = link; $('#key-link-out').hidden = false;
+    const done = () => { st.textContent = 'Personal link copied. Send it to your phone and open it there. Don\'t share it: it opens your data.'; };
+    try { navigator.clipboard.writeText(link).then(done, () => { $('#key-link-out').select(); st.textContent = 'Link selected below. Copy it and send it to your phone.'; }); }
+    catch (e) { $('#key-link-out').select(); st.textContent = 'Link selected below. Copy it and send it to your phone.'; }
   });
   $('#key-show').addEventListener('click', () => { const i = $('#in-key'); i.type = i.type === 'password' ? 'text' : 'password'; $('#key-show').textContent = i.type === 'password' ? 'Show' : 'Hide'; });
   $('#export-json').addEventListener('click', () => {

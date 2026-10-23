@@ -2,7 +2,6 @@
   "name": "The Arc",
   "short_name": "Arc",
   "description": "180-day daily protocol ledger",
-  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
