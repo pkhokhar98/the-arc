@@ -3,7 +3,7 @@
    Local state first (localStorage), queued writes flushed to the Apps Script web app.
    Order of this file: constants · protocol · dates · state · sync · today screen · (log, chart, calendar, reading appended below) · boot */
 
-const BUILD = '2026-10-23a';   // bump with version.json on every release
+const BUILD = '2026-10-24a';   // bump with version.json on every release
 
 // Paste the Apps Script web app URL here (ends in /exec), or set it in Log → Sync on the phone.
 const API_URL = 'https://script.google.com/macros/s/AKfycby8GfExKVz6mz2ofy1SJ47RvrwynBNgLi_WC_EKDmD-_YO_FT3sEs8RTafTvDsFYZWAhw/exec';
@@ -139,6 +139,7 @@ function scheduleFor(date) {
   const W = wakeMin(), B = bedMin(), ses = sessionFor(date);
   const deep = W + 50 < WORK_START ? [W + 50, WORK_START] : [W + 50, W + 80];
   const tr = ses.type === 'rest' ? [600, 660] : (() => { const t = hhmmToMin(ses.time) ?? 870; return [t, t + 75]; })();
+  const keys = new Set(itemsFor(date).map(i => i.key));
   return [
     { key: 'sleep', t: W, end: W + 5 },
     { key: 'morning_window', t: W, end: W + 20 },
@@ -155,8 +156,14 @@ function scheduleFor(date) {
     { key: 'night_close', t: B - 45, end: B - 40 },
     { key: 'pm_stack', t: B - 40, end: B - 35 },
     { key: 'rinse', t: B - 35, end: B - 30 },
-    { key: 'sats', t: B - 20, end: B }
-  ].sort((a, b) => a.t - b.t || a.end - b.end);
+    { key: 'sats', t: B - 20, end: B },
+    { key: 'outside', t: 660, end: 720 },
+    { key: 'review', t: 600, end: 610 },
+    { key: 'shop_list', t: 610, end: 620 },
+    { key: 'ria', t: 1020, end: 1140 }
+  ].map(x => (isWeekend(date) && x.key === 'walk') ? Object.assign({}, x, { end: x.t + 30 }) : x)
+   .filter(x => keys.has(x.key))
+   .sort((a, b) => a.t - b.t || a.end - b.end);
 }
 function groupNote(g) {
   const W = wakeMin(), B = bedMin();
@@ -176,10 +183,50 @@ function phaseFor(date) { const w = weekOf(date); return ACHILLES.find(p => w >=
 function halveSets(s) { return s.replace(/(\d+)×/, (m, n) => `${Math.ceil(Number(n) / 2)}×`); }
 
 /** Resolved checklist for a date: titles, subtitles, required flags, group names. */
+// Weekends run their own lists: no weekday work items, four or five required anchors.
+const WEEKEND = {
+  6: [   // Saturday
+    { group: 'Sleep', items: [
+      { key: 'sleep', req: true, title: 'Sleep, no alarm', sub: 'wake when you wake · log the hours', detail: 'sleep' }] },
+    { group: 'On waking', note: 'before the phone', items: [
+      { key: 'morning_window', req: true, title: 'Morning window, 20 min', sub: 'breath · simran · future self', detail: 'window' }] },
+    { group: 'Day', note: 'laptop shut', items: [
+      { key: 'train', req: true, title: 'dyn', sub: 'dyn', detail: 'train' },
+      { key: 'protein', req: true, title: 'dyn', sub: 'dyn' },
+      { key: 'outside', title: 'Outside properly', sub: 'a real stretch outdoors, not the walk to the car' },
+      { key: 'ria', title: 'Something with Ria', sub: 'phones away' },
+      { key: 'laptop_shut', title: 'Laptop stays shut', sub: 'all day' }] },
+    { group: 'Evening', items: [
+      { key: 'read', title: 'Read', sub: 'no minimum' },
+      { key: 'rinse', req: true, title: 'Rinse + Pulmicort', sub: 'last rinse of the night · daily through 18 April' }] },
+    { group: 'Pre-sleep', items: [
+      { key: 'sats', title: 'SATS', sub: 'relaxation 8 min · body freedom 30 s · one scene 10 min', detail: 'sats' }] }
+  ],
+  0: [   // Sunday
+    { group: 'Sleep', items: [
+      { key: 'sleep', req: true, title: 'Sleep, no alarm', sub: 'wake when you wake · log the hours', detail: 'sleep' }] },
+    { group: 'On waking', note: 'before the phone', items: [
+      { key: 'morning_window', req: true, title: 'Morning window, 20 min', sub: 'breath · simran · future self', detail: 'window' }] },
+    { group: 'Day', note: 'laptop shut', items: [
+      { key: 'protein', req: true, title: 'dyn', sub: 'dyn' },
+      { key: 'review', req: true, title: 'Weekly review, 5 min', sub: 'read the week in Log · one line for next week' },
+      { key: 'ria', title: 'Something with Ria' },
+      { key: 'walk', title: 'Walk, 30 min' },
+      { key: 'shop_list', title: 'Send the shop list to Ria', sub: 'Food tab · Copy list for Ria' }] },
+    { group: 'Evening', items: [
+      { key: 'read', title: 'Read', sub: 'no minimum' },
+      { key: 'rinse', req: true, title: 'Rinse + Pulmicort', sub: 'last rinse of the night · daily through 18 April' }] },
+    { group: 'Pre-sleep', items: [
+      { key: 'sats', title: 'SATS', sub: 'relaxation 8 min · body freedom 30 s · one scene 10 min', detail: 'sats' }] }
+  ]
+};
+const protocolFor = date => WEEKEND[parseYMD(date).getDay()] || PROTOCOL;
+const isWeekend = date => !!WEEKEND[parseYMD(date).getDay()];
+
 function itemsFor(date) {
   const ses = sessionFor(date), k = cfg(), diet = isDiet(date), deload = isDeload(date);
   const out = [];
-  PROTOCOL.forEach(g => g.items.forEach(it => {
+  protocolFor(date).forEach(g => g.items.forEach(it => {
     const r = Object.assign({}, it, { group: g.group, req: !!it.req });
     if (it.key === 'protein') {
       r.title = `${k.protein} g protein`;
@@ -187,7 +234,7 @@ function itemsFor(date) {
     }
     if (it.key === 'steps') r.title = `${k.steps.toLocaleString()} steps`;
     if (it.key === 'deep_work') r.sub = wakeMin() + 50 < WORK_START ? `${fmtT(wakeMin() + 50)}–07:00 · before meetings open` : 'no room before 07:00 today · take the first gap after a call';
-    if (it.key === 'sleep') r.title = `${k.sleep} hours minimum`;
+    if (it.key === 'sleep' && !isWeekend(date)) r.title = `${k.sleep} hours minimum`;
     if (it.key === 'train') {
       r.title = ses.name;
       r.sub = [ses.time, ses.sub, deload && ses.type === 'lift' ? 'deload · half the sets' : ''].filter(Boolean).join(' · ');
@@ -261,7 +308,7 @@ function mutate(date, patch) {
   patch(d);
   // derived ticks: logging sleep / steps sets their anchors
   const k = cfg();
-  if (d.sleep_hours !== null) d.checks.sleep = d.sleep_hours >= k.sleep;
+  if (d.sleep_hours !== null) { if (!isWeekend(date)) d.checks.sleep = d.sleep_hours >= k.sleep; else if (d.sleep_hours >= k.sleep) d.checks.sleep = true; }
   if (d.steps !== null) d.checks.steps = d.steps >= k.steps;
   const changed = diffPaths(before, d);
   if (!changed.length) { render(); return; }
@@ -507,7 +554,7 @@ function detailFor(it, date) {
         return wrap;
       }
       if (ses.type === 'run') return h('div', {}, ses.sub + (ses.name === 'Long run' ? '. Keep it conversational; the 10 % cap is on distance.' : '. Nose breathing if you can hold it.'));
-      return h('div', {}, 'Rest. Weekly review: read the Log tab for the week, write next week\'s one line, Sunday prep in Food.');
+      return h('div', {}, 'Rest. Weekly review: read the Log tab for the week, write next week\'s one line, send Ria the shop list.');
     }
     default: return null;
   }
@@ -517,7 +564,7 @@ function renderChecklist() {
   const date = view.date, d = getDay(date), root = $('#checklist');
   root.replaceChildren();
   const items = itemsFor(date);
-  PROTOCOL.forEach(g => {
+  protocolFor(date).forEach(g => {
     const its = items.filter(i => i.group === g.group);
     const reqN = its.filter(i => i.req).length, doneN = its.filter(i => i.req && d.checks[i.key]).length;
     const sec = h('section', { class: 'group' },
@@ -677,6 +724,16 @@ function readLogInputs() {
   });
 }
 
+function bindFood() {
+  const btn = $('#shop-copy'); if (!btn) return;
+  btn.addEventListener('click', () => {
+    const items = $$('.shop li').map(li => '• ' + li.textContent.trim());
+    const text = 'Shop list for this week:\n' + items.join('\n');
+    const st = $('#shop-status');
+    const fallback = () => { $('#shop-text').value = text; $('#shop-text').hidden = false; $('#shop-text').select(); st.textContent = 'Selected below. Copy it and send it to Ria.'; };
+    try { navigator.clipboard.writeText(text).then(() => { st.textContent = 'Copied. Paste it into your chat with Ria.'; }, fallback); } catch (e) { fallback(); }
+  });
+}
 function bindLog() {
   ['#in-weight', '#in-sleep', '#in-steps', '#in-lift-w', '#in-lift-r'].forEach(id => $(id).addEventListener('change', readLogInputs));
   // also save a moment after typing stops, and when the app is left mid-entry (no blur, so no change event)
@@ -908,7 +965,7 @@ const TIERS = [
   { min: 150000, name: 'Super Saiyan Blue', jp: '超サイヤ人ブルー', aura: '#34C8FF', aura2: '#D6F5FF' },
   { min: 190000, name: 'Ultra Instinct',    jp: '身勝手の極意',     aura: '#C9D6EA', aura2: '#FFFFFF', bolts: true }
 ];
-const ANCHOR_LABEL = { sleep: 'Sleep 7.5 h', morning_window: 'Morning window', protein: 'Protein target', steps: 'Steps target', train: 'Training session',
+const ANCHOR_LABEL = { review: 'Weekly review', sleep: 'Sleep 7.5 h', morning_window: 'Morning window', protein: 'Protein target', steps: 'Steps target', train: 'Training session',
   decompress: 'Decompression', read: 'Read 20 min', night_close: 'Night close', rinse: 'Rinse + Pulmicort', sats: 'SATS' };
 const REDUCE = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
 const PW = { sample: false, sampleS: null, shown: 0, cur: 0, countRaf: 0, countT: 0, fighter: 'vegeta' };
@@ -1294,7 +1351,7 @@ function recapLine(today) {
   if (dn < 1) return { e: 'Next time on The Arc…', b: `The training begins ${fmtShort(k.start)}. ${k.total} days. ${k.startW} lb to ${k.goal}. <b>Power up.</b>` };
   let prev = null;
   for (let d = addDays(today, -1); d >= k.start; d = addDays(d, -1)) if (S.days[d]) { prev = d; break; }
-  if (!prev) return { e: 'Day 1 of The Arc…', b: `The scouter is watching. <b>Ten anchors stand between you and full power.</b>` };
+  if (!prev) return { e: 'Day 1 of The Arc…', b: `The scouter is watching. <b>The anchors stand between you and full power.</b>` };
   const day = S.days[prev], req = itemsFor(prev).filter(i => i.req), done = req.filter(i => day.checks[i.key]);
   const bits = [`${done.length} of ${req.length} anchors`];
   if (day.sleep_hours !== null) bits.push(`${day.sleep_hours} h of sleep`);
@@ -1573,6 +1630,7 @@ function drawPower(today) {
   }
   const req = itemsFor(today).filter(i => i.req), dayT = S.days[today];
   const doneT = req.filter(i => dayT && dayT.checks[i.key]).length, full = doneT === req.length;
+  $('#pw-segs').style.setProperty('--n', req.length);
   $('#pw-segs').innerHTML = req.map((_, i) => `<i class="pw-seg${i < doneT ? ' is-on' : ''}"></i>`).join('');
   $('#pw-charge-t').textContent = `${doneT}/${req.length}`;
   $('#pw-charge').classList.toggle('is-full', full);
@@ -1778,9 +1836,9 @@ const VOICE = {
   trunks: ['Where I\'m from, the ones who skipped {x} didn\'t make it. Don\'t skip it.', 'I came back from the future for one reason: {x}.',
            'Sword\'s sharp, plan\'s simple. {X}.', 'In my timeline nobody had a streak like yours. Protect it: {x}.', 'Mom built a time machine. You can manage {x}.']
 };
-const ANCHOR_X = { sleep: 'sleep', morning_window: 'the morning window', protein: 'your protein', steps: 'your steps', train: 'training', decompress: 'the decompression',
+const ANCHOR_X = { review: 'the weekly review', sleep: 'sleep', morning_window: 'the morning window', protein: 'your protein', steps: 'your steps', train: 'training', decompress: 'the decompression',
   read: 'your reading', night_close: 'the night close', rinse: 'the Pulmicort rinse', sats: 'SATS' };
-const TOPIC = { sleep: 'sleep', morning_window: 'mind', sats: 'mind', decompress: 'mind', protein: 'food', breakfast: 'food', steps: 'train', walk: 'train',
+const TOPIC = { review: 'review', sleep: 'sleep', morning_window: 'mind', sats: 'mind', decompress: 'mind', protein: 'food', breakfast: 'food', steps: 'train', walk: 'train',
   train: 'train', read: 'read', night_close: 'discipline', rinse: 'discipline' };
 
 function dayIndex(date) { return Math.floor(parseYMD(date).getTime() / 86400000); }
@@ -1790,7 +1848,7 @@ function coachFocus(today) {
   const k = cfg(), dn = dayNumber(today), ses = sessionFor(today), B = bedMin(), W = wakeMin();
   const prev = addDays(today, -1);
   if (dn < 1) return { lock: 'Day 1 starts tomorrow', why: `Alarm at ${fmtT(W)}. Asleep by ${fmtT(B)} tonight so the sleep anchor counts from the first morning.`, t: 'start', x: 'an early night' };
-  if (ses.type === 'rest') return { lock: 'Weekly review', why: 'Read the week in the Log tab, write one line for next week, then Sunday prep: two chickens, six sweet potatoes, a dozen eggs, a kilo of turkey.', t: 'review', x: 'the weekly review' };
+  if (ses.type === 'rest') return { lock: 'Weekly review', why: 'Five minutes: read the week in the Log tab, write one line for next week, and send Ria the shop list from the Food tab. Laptop stays shut.', t: 'review', x: 'the weekly review' };
   const reqPrev = dayNumber(prev) >= 1 ? itemsFor(prev).filter(i => i.req) : [];
   const pd = S.days[prev];
   if (pd && reqPrev.length) {
@@ -1815,7 +1873,8 @@ function coachFocus(today) {
   }
   if (ses.type === 'run') return { lock: ses.name, why: `${ses.sub}. Conversational pace; the work is showing up.`, t: 'train', x: `the ${ses.name.toLowerCase()}` };
   const st = powerReport(today).streak;
-  return { lock: 'Keep the streak', why: st ? `${st} clean day${st === 1 ? '' : 's'} in a row. Ten anchors, no exceptions.` : 'Ten anchors today. Start a streak.', t: 'discipline', x: 'the streak' };
+  const nReq = itemsFor(today).filter(i => i.req).length;
+  return { lock: 'Keep the streak', why: st ? `${st} clean day${st === 1 ? '' : 's'} in a row. ${nReq} anchors today, no exceptions.` : `${nReq} anchors today. Start a streak.`, t: 'discipline', x: 'the streak' };
 }
 function coachOfDay(today) {
   const all = Object.keys(CAST), withArt = all.filter(k => artFor(k)), pool = withArt.length ? withArt : all;
@@ -1875,6 +1934,7 @@ function bindCoach() {
 RENDERERS.push(renderLog, renderReading, renderPower, renderCoach, renderCast);
 bootCore();
 bindLog();
+bindFood();
 bindNext();
 bindPower();
 bindCoach();

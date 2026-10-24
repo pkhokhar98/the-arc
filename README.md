@@ -136,7 +136,10 @@ The sleep and steps rows have the input inside their expandable detail, so both 
 
 * **Training time slots** are not in the spec. `TRAIN_TIME` in app.js: lifts and the easy run 14:30
   (after the client day closes), long run 08:00. Change there.
-* **Sunday** keeps the TRAIN anchor as "Rest + weekly review"; ticking it means the review happened.
+* **Weekends run their own lists** (`WEEKEND` in app.js), with no weekday work items. Saturday has 5 required
+  anchors (sleep with no alarm, morning window, long run, protein, rinse); Sunday has 5 (sleep, morning window, protein,
+  5-minute weekly review, rinse). Read and SATS are optional. Weekend sleep only auto-ticks *on* from logged hours.
+  Sunday prep in Food is reference for Ria, not a checklist item; "Copy list for Ria" copies the shop list.
   `trained` is written as false on Sundays regardless.
 * **Deload weeks** halve the set count shown in the training detail (rounded up); loads unchanged.
 * **Past days** can be opened with the ‹ › arrows beside the counter or by tapping a calendar cell,

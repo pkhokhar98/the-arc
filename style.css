@@ -433,7 +433,7 @@ body.on-power .app { max-width: 1100px; }
 .pw-charge__ready { text-align: center; }
 .pw-charge__h { display: flex; justify-content: space-between; font-family: var(--f-display); font-size: 16px; letter-spacing: .08em; }
 .pw-charge__h span:last-child { font-family: var(--f-hud); font-weight: 700; font-size: 15px; }
-.pw-charge__segs { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 5px; }
+.pw-charge__segs { display: grid; grid-template-columns: repeat(var(--n, 10), minmax(0, 1fr)); gap: 5px; }
 .pw-seg { height: 16px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); transform: skewX(-20deg); transition: background-color .3s, box-shadow .3s; }
 .pw-seg.is-on { background: linear-gradient(180deg, var(--pw-ki), var(--pw-gi)); border-color: var(--pw-ki); box-shadow: 0 0 10px color-mix(in srgb, var(--pw-gi) 70%, transparent); }
 .pw-charge.is-full .pw-seg.is-on { background: linear-gradient(180deg, #D8F6FF, var(--pw-kame)); border-color: #D8F6FF; box-shadow: 0 0 14px var(--pw-kame); }
@@ -922,3 +922,5 @@ input[type="number"], input[type="text"], input[type="url"], textarea { backgrou
 .cast__b button[data-act="photo"], .cast__b button[data-act="link"] { flex: 1 1 0; min-width: 0; padding: 0 4px; }
 .cast__b button[data-act="del"] { position: absolute; top: 4px; right: 4px; min-width: 30px; min-height: 30px; padding: 0; border-radius: 50%; clip-path: none; background: rgba(4, 7, 22, .7); }
 .cast-diag.is-bad { color: var(--ember); }
+
+#shop-text { width: 100%; min-height: 9rem; margin-top: 10px; font: inherit; font-size: 13px; }
